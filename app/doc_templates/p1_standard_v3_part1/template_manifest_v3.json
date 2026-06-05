@@ -1,0 +1,146 @@
+{
+  "version": "v3_standard_layout",
+  "principle": "Preserve content from v2/source templates while rebuilding layout with a clean, consistent business-document style. No clause is intentionally summarized or removed.",
+  "design_preset": {
+    "base": "standard_business_brief",
+    "named_override": "legal template override: Arial, 10.5-11 pt body, clean tables/signature blocks, no floating objects or manual-space layout.",
+    "page": "US Letter portrait for standard documents; Share Certificate uses a landscape certificate layout."
+  },
+  "quality_changes": [
+    "Rebuilt the visual structure instead of carrying forward old Word/WPS floating objects, hidden white text, manual tabs and sample arrows.",
+    "Restored Secretary Agreement clauses that were present but hidden in white text in the old source.",
+    "Used table-based fields for forms, share certificate data and signature blocks to reduce misalignment.",
+    "Added Part 1 Form 24 and RORC templates based on the old registration pack and the shareholder rows, without requiring separate manual allottee/controller fields.",
+    "Form 24 now makes the repeated shareholder/allottee area and repeated shareholder signature area explicit in the template.",
+    "RORC was returned to a source-like notice/list/signature structure instead of a compressed table summary.",
+    "Rebuilt Share Certificate as a single-page certificate original in a centered landscape layout with a restrained red certificate border and a lower fixed signature band; counterfoil/receipt pages are deferred as optional P2 support.",
+    "Removed Chinese company-name/address placeholders and interpreter placeholders from P1 templates because they are not part of the current MVP input fields.",
+    "Kept legal/commercial wording from v2/source except for obvious typographical, duplicate-wording and layout-related cleanup."
+  ],
+  "manual_review_flags": [
+    "The templates are operational drafting templates, not legal advice.",
+    "Share certificate design is standardized for generation; compare with your preferred house style before production rollout.",
+    "Form 24 and RORC are included as Part 1 because requested; they use Shareholders/People data and should still receive legal/status review before cloud rollout.",
+    "Signature record attachment and Statutory Registers are deferred to P2.",
+    "If the final cloud system uses HTML-to-PDF for certificate-style documents, this DOCX layout can be used as the visual reference."
+  ],
+  "p2_deferred": [
+    {
+      "template_id": "signature_record_attachment",
+      "reason": "Online e-signature audit attachment; keep for P2 when e-signing is enabled."
+    },
+    {
+      "template_id": "statutory_registers",
+      "reason": "Registers pack is useful later but not complete/mandatory for the first internal file generator."
+    }
+  ],
+  "templates": [
+    {
+      "template_id": "first_directors_resolution",
+      "file_name": "01_first_directors_resolution_standard.docx",
+      "display_name": "First Directors Resolution",
+      "source": "1. Company Name + First minutes resolution.docx",
+      "build_method": "v3_standardized_layout_content_preserved",
+      "repeat": "one_per_company",
+      "signing_logic": "All directors sign in one document using company.director_signature_blocks."
+    },
+    {
+      "template_id": "director_consent",
+      "file_name": "02_director_consent_form45_standard.docx",
+      "display_name": "Consent to Act as Director / Form 45",
+      "source": "3. Company Name + Form 45.doc/pdf + ACRA Form 45 reference",
+      "build_method": "v3_standardized_layout_content_preserved",
+      "repeat": "one_per_director"
+    },
+    {
+      "template_id": "secretary_consent",
+      "file_name": "03_secretary_consent_form45b_standard.docx",
+      "display_name": "Consent to Act as Secretary / Form 45B",
+      "source": "4. Company Name + Form45B.doc/pdf + ACRA Form 45B reference",
+      "build_method": "v3_standardized_layout_content_preserved",
+      "repeat": "one_per_secretary"
+    },
+    {
+      "template_id": "share_certificate",
+      "file_name": "04_share_certificate_standard.docx",
+      "display_name": "Share Certificate",
+      "source": "5. Company Name + Share Certificate-2.docx",
+      "build_method": "v3_standardized_layout_content_preserved",
+      "repeat": "one_per_shareholder_or_certificate",
+      "signing_logic": "Certificate is executed by the company. The director signature line is intentionally blank for the actual signing director; the secretary line uses the company secretary. The system prefers a non-nominee/client director for certificate context and uses a nominee director only as fallback."
+    },
+    {
+      "template_id": "secretary_service_agreement",
+      "file_name": "05_secretary_service_agreement_standard.docx",
+      "display_name": "Secretary Service Agreement",
+      "source": "7.Secretary Agreement.docx",
+      "build_method": "v3_standardized_layout_content_preserved",
+      "repeat": "one_per_company",
+      "signing_logic": "Provider signs and one client representative signs. The client representative defaults to shareholder 1, then a marked client signatory, then director 1."
+    },
+    {
+      "template_id": "nominee_director_agreement",
+      "file_name": "06_nominee_director_agreement_standard.docx",
+      "display_name": "Nominee Director Agreement",
+      "source": "8 Agreement for Appointment of Nominee Director.doc/pdf",
+      "build_method": "v3_standardized_layout_content_preserved",
+      "repeat": "one_per_nominee_director_relationship",
+      "signing_logic": "Nominee director signs and one client representative signs. The client representative defaults to shareholder 1.",
+      "manual_review": true
+    },
+    {
+      "template_id": "return_of_allotment_form24",
+      "file_name": "07_return_of_allotment_form24_standard.docx",
+      "display_name": "Return of Allotment of Shares / Form 24",
+      "source": "2. Company Name + FORM 24.doc/pdf",
+      "build_method": "v3_standardized_layout_from_source_pdf_shareholder_fields",
+      "repeat": "one_per_company_allotment_with_signature_blocks_for_each_shareholder; duplicate per shareholder if separate signing copies are required",
+      "manual_review": true
+    },
+    {
+      "template_id": "rorc_notice_controller",
+      "file_name": "08_rorc_notice_controller_standard.docx",
+      "display_name": "RORC Notice to Registrable Controller",
+      "source": "6. Company Name + RORC.doc/pdf",
+      "build_method": "v3_standardized_layout_from_source_pdf_shareholder_controller",
+      "repeat": "one_per_registrable_controller_shareholder",
+      "manual_review": true
+    }
+  ],
+  "fields": {
+    "company.company_name": "Company legal name.",
+    "company.uen": "Company registration number/UEN; can be blank before incorporation.",
+    "company.incorporation_date": "Date of incorporation or appointment effective date.",
+    "company.registered_office_address": "Registered office address.",
+    "company.register_location": "Place where register of members and index is kept; default can be registered office.",
+    "company.first_directors_names": "Derived list of first director names for old resolution sentence.",
+    "company.director_signature_blocks": "Derived signature lines for all directors in the first directors resolution.",
+    "company.subscriber_share_lines": "Derived multi-line subscriber/share table text for old resolution layout.",
+    "company.share_par_value": "Legacy compatibility value; current templates prefer issued/paid-up share capital fields.",
+    "company.fye_month": "Financial year end month, auto-derived from incorporation date unless overridden.",
+    "company.first_financial_period_start": "First accounts period start, defaults to incorporation date and renders as a long date.",
+    "company.first_financial_period_end": "First accounts period end, auto-derived as the last day of the month before the incorporation month unless overridden.",
+    "director.*": "One director context for per-director documents.",
+    "secretary.*": "One secretary context for per-secretary documents.",
+    "shareholder.*": "One shareholder/share certificate context.",
+    "provider.*": "Website setting for RSIN/service provider details.",
+    "client_signatory.*": "Single client-side signer. Defaults to shareholder 1, then a marked client signatory, then director 1.",
+    "nominee_director.*": "Nominee director context.",
+    "signature.*": "Signature date fields, including day/month/year split for old legal wording.",
+    "company.share_currency": "Share currency; default usually SGD.",
+    "company.subscriber_share_totals": "Derived total/share-count cell used by the v3 subscriber shares table.",
+    "company.issued_share_capital": "Derived total issued share capital from shareholder rows; defaults to shares for normal 1:1 ordinary shares.",
+    "company.paid_up_capital": "Derived total paid-up share capital from shareholder rows; defaults to issued share capital when blank.",
+    "company.unpaid_share_capital": "Derived unpaid share capital; used as a review flag when issued capital is higher than paid-up capital.",
+    "company.amount_paid_per_share": "Derived paid amount per share for Form 24.",
+    "company.amount_due_per_share": "Derived amount due per share for Form 24; '-' when fully paid.",
+    "shareholders[]": "Repeating shareholder rows used by Form 24 and RORC; Form 24 allottees and shareholder signature blocks repeat from this list.",
+    "shareholder.date_of_birth": "Derived from the matched People row when the shareholder is an individual.",
+    "company.shareholder_signature_blocks": "Derived Form 24 signature lines, one block for each shareholder/allottee.",
+    "shareholder.issued_share_capital": "Shareholder-level issued share capital.",
+    "shareholder.paid_up_share_capital": "Shareholder-level paid-up share capital.",
+    "shareholder.unpaid_share_capital": "Shareholder-level unpaid share capital.",
+    "shareholder.paid_status_text": "Share certificate wording, e.g. fully paid or partly paid details.",
+    "shareholder.form24_allotment_text": "Form 24 allotment summary with shares, issued capital, paid-up capital and unpaid capital when applicable."
+  }
+}

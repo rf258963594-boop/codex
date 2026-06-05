@@ -1,0 +1,23 @@
+services:
+  secretary-files:
+    build: .
+    container_name: secretary-files
+    ports:
+      - "8088:8088"
+    environment:
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8088"
+      SOFFICE_PATH: "/usr/bin/soffice"
+      LIBREOFFICE_PROFILE_DIR: "/tmp/libreoffice-profile"
+    volumes:
+      - secretary_data:/app/app/data
+      - secretary_uploads:/app/app/uploads
+      - secretary_generated:/app/app/generated
+      - secretary_templates:/app/app/doc_templates
+    restart: unless-stopped
+
+volumes:
+  secretary_data:
+  secretary_uploads:
+  secretary_generated:
+  secretary_templates:

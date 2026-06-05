@@ -1,0 +1,113 @@
+{
+  "principle": "v2 preserves old text/order as much as possible, fieldizes sample data, and only applies clear professionalism/source updates.",
+  "preserved_from_source_docx": [
+    "First Directors Resolution",
+    "Share Certificate",
+    "Secretary Service Agreement",
+    "Signature Record Attachment"
+  ],
+  "reconstructed_from_pdf_or_reference": [
+    "Director Consent / Form 45",
+    "Secretary Consent / Form 45B",
+    "Nominee Director Agreement"
+  ],
+  "updates_applied": [
+    "Removed sample names, addresses, IDs, email addresses, dates and company numbers; replaced them with placeholders.",
+    "Form 45 wording uses ACRA reference wording where the old PDF was already close but sample-filled; notably 'General Division of the High Court of Singapore'.",
+    "Form 45B institute names follow the ACRA reference wording, including Institute of Singapore Chartered Accountants and Chartered Secretaries Institute of Singapore.",
+    "Secretary Agreement keeps the long bilingual clauses from the source DOCX, but fixes obvious duplicate provider wording and visible grammar typos such as 'will always be due and payable', 'We are aware', and 'including but not limited to'.",
+    "First Directors Resolution keeps the old layout and fixes visible heading/grammar typos such as 'MEMBERS AND INDEX' spacing and plural signatories/members wording, while removing old sample arrow/page-marker artifacts.",
+    "Recovered old Secretary Agreement clauses that were present in the source file but formatted as white text.",
+    "Nominee Director Agreement keeps the full clause structure from the source PDF instead of summary clauses."
+  ],
+  "manual_review_flags": [
+    "These are operational templates, not legal advice. Final production use should be checked by a Singapore-qualified professional or your internal reviewer.",
+    "Old templates still refer to Companies Act (Chapter 50) / Cap. 50 in places because the ACRA Form 45/Form 45B PDFs also display that legacy label. Do not bulk change this without legal review.",
+    "The Nominee Director Agreement includes broad bilingual terms from the old PDF. Commercial terms such as fees, deposit, notice, local bank support and liability scope should be confirmed before use."
+  ],
+  "official_references": [
+    "ACRA Form 45 - Consent to Act as Director and Statement of Non Disqualification to Act as Director",
+    "ACRA Form 45B - Consent to Act as Secretary",
+    "Singapore Statutes Online - Companies Act 1967 sections 149, 154, 171 and 173A/173E context"
+  ],
+  "templates": [
+    {
+      "template_id": "first_directors_resolution",
+      "file_name": "01_first_directors_resolution_preserved.docx",
+      "display_name": "First Directors Resolution",
+      "source": "1. Company Name + First minutes resolution.docx",
+      "build_method": "source_docx_fieldized",
+      "repeat": "one_per_company"
+    },
+    {
+      "template_id": "director_consent",
+      "file_name": "02_director_consent_form45_preserved.docx",
+      "display_name": "Consent to Act as Director / Form 45",
+      "source": "3. Company Name + Form 45.doc/pdf + ACRA Form 45 reference",
+      "build_method": "pdf_reconstructed_with_current_acra_wording",
+      "repeat": "one_per_director"
+    },
+    {
+      "template_id": "secretary_consent",
+      "file_name": "03_secretary_consent_form45b_preserved.docx",
+      "display_name": "Consent to Act as Secretary / Form 45B",
+      "source": "4. Company Name + Form45B.doc/pdf + ACRA Form 45B reference",
+      "build_method": "pdf_reconstructed_with_current_acra_wording",
+      "repeat": "one_per_secretary"
+    },
+    {
+      "template_id": "share_certificate",
+      "file_name": "04_share_certificate_preserved.docx",
+      "display_name": "Share Certificate",
+      "source": "5. Company Name + Share Certificate-2.docx",
+      "build_method": "source_docx_fieldized",
+      "repeat": "one_per_shareholder_or_certificate"
+    },
+    {
+      "template_id": "secretary_service_agreement",
+      "file_name": "05_secretary_service_agreement_preserved.docx",
+      "display_name": "Secretary Service Agreement",
+      "source": "7.Secretary Agreement.docx",
+      "build_method": "source_docx_fieldized_minor_text_cleanup",
+      "repeat": "one_per_company"
+    },
+    {
+      "template_id": "nominee_director_agreement",
+      "file_name": "06_nominee_director_agreement_preserved.docx",
+      "display_name": "Nominee Director Agreement",
+      "source": "8 Agreement for Appointment of Nominee Director.doc/pdf",
+      "build_method": "pdf_reconstructed_preserving_full_clause_structure",
+      "repeat": "one_per_nominee_director_relationship",
+      "manual_review": true
+    },
+    {
+      "template_id": "signature_record_attachment",
+      "file_name": "07_signature_record_attachment_preserved.docx",
+      "display_name": "Signature Record Attachment",
+      "source": "每份签名文件后需附带的签名记录.docx",
+      "build_method": "source_docx_fieldized_sample_data_removed",
+      "repeat": "append_to_each_signed_document"
+    }
+  ],
+  "fields": {
+    "company.company_name": "Company legal name.",
+    "company.uen": "Company registration number/UEN; can be blank before incorporation.",
+    "company.incorporation_date": "Date of incorporation or appointment effective date.",
+    "company.registered_office_address": "Registered office address.",
+    "company.register_location": "Place where register of members and index is kept; default can be registered office.",
+    "company.first_directors_names": "Derived list of first director names for old resolution sentence.",
+    "company.subscriber_share_lines": "Derived multi-line subscriber/share table text for old resolution layout.",
+    "company.share_par_value": "Legacy wording value per share; default usually 1.",
+    "company.fye": "Financial year end.",
+    "company.first_financial_period_start": "First accounts period start.",
+    "company.first_financial_period_end": "First accounts period end.",
+    "director.*": "One director context for per-director documents.",
+    "secretary.*": "One secretary context for per-secretary documents.",
+    "shareholder.*": "One shareholder/share certificate context.",
+    "provider.*": "Website setting for RSIN/service provider details.",
+    "client_signatory.*": "Client authorised signatory context.",
+    "nominee_director.*": "Nominee director context.",
+    "signature.*": "Signature date fields, including day/month/year split for old legal wording.",
+    "signature_record.*": "Post-signing e-signature audit data."
+  }
+}
