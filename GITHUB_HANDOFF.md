@@ -2,6 +2,8 @@
 
 This repository is the internal RSIN corporate secretary document generator MVP.
 
+For a fuller Chinese handoff that lets another Codex continue without reading the whole chat history, start with `CODEX_CONTEXT.md`.
+
 ## Current stage
 
 - Local website entry: `http://127.0.0.1:8088/`
@@ -51,4 +53,3 @@ The document wording is for internal workflow support and should still be review
 - Unify the website entry flow for M01-M05.
 - Add cleaner admin template version management.
 - Prepare a production database model for contacts, persons, companies, roles, and document snapshots.
-
