@@ -11,6 +11,7 @@ For the latest default-value and staff-flow regression notes, also read `DEFAULT
 - Start helper: `OPEN_WEBSITE.cmd`
 - Admin smoke-test login: `admin` / `admin123`
 - Main flow: upload Excel input, review suggested file groups, generate PDF signing packages.
+- Admin backend: `/settings` has an overview dashboard, user/account controls, common-people controls, grouped document-template management, import templates, rule table, and audit logs.
 
 ## Connected document groups
 
@@ -29,6 +30,7 @@ For the latest default-value and staff-flow regression notes, also read `DEFAULT
 - `tools/`: template builders, website control scripts, smoke-test scripts.
 - `templates/import/`: clean Excel import templates copied from the latest official outputs.
 - `tests/fixtures/`: fake stress-test Excel inputs for P1/P2 document generation.
+- `tools/web_admin_settings_smoke_test.py`: checks the admin backend and confirms staff users cannot access it.
 - `outputs/`: intentionally ignored. It contains generated files, screenshots, render caches, and older scratch outputs.
 - `app/generated/`: intentionally ignored. It contains generated PDF/ZIP output.
 - `app/uploads/`: intentionally ignored. It contains uploaded Excel files.

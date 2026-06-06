@@ -759,6 +759,15 @@ class App(BaseHTTPRequestHandler):
             users = conn.execute("SELECT id, username, role, active, last_login_at, created_at FROM users ORDER BY id").fetchall()
             people = conn.execute("SELECT * FROM common_people ORDER BY display_name").fetchall()
             rules = conn.execute("SELECT * FROM template_rules ORDER BY task_type, change_item").fetchall()
+            job_stats = conn.execute(
+                """
+                SELECT
+                  COUNT(*) AS total_jobs,
+                  SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked_jobs,
+                  SUM(CASE WHEN status LIKE '%pdf_generated' OR status = 'pdf_generated' THEN 1 ELSE 0 END) AS pdf_jobs
+                FROM generation_jobs
+                """
+            ).fetchone()
             login_logs = conn.execute(
                 """
                 SELECT audit_logs.*, users.username
@@ -789,13 +798,16 @@ class App(BaseHTTPRequestHandler):
             f"<tr><td>{h(r['rule_key'])}</td><td>{h(task_label(r['task_type']))}</td><td>{h(r['change_item'])}</td><td>{h(r['suggested_file'])}</td><td>{h(r['signing_mode'])}</td><td>{h(r['signer_source'])}</td><td>{'可合并' if r['can_merge_dr'] else ''}</td><td>{'需复核' if r['manual_review'] else ''}</td></tr>"
             for r in rules
         )
+        overview_html = admin_overview_html(users, people, rules, job_stats)
         template_rows = template_library_rows_html(show_archived_templates)
         import_template_toggle = (
             "<p class='muted template-toggle'>当前只显示正式入口。<a href='/settings?show_archived_templates=1#templates'>显示旧版 / 测试 / 辅助入口</a></p>"
             if not show_archived_templates
             else "<p class='muted template-toggle'>已显示旧版 / 测试 / 辅助入口。<a href='/settings#templates'>收起旧入口</a></p>"
         )
-        document_template_rows = document_template_rows_html()
+        document_template_sections = document_template_sections_html()
+        user_form_open = " open" if edit_user else ""
+        person_form_open = " open" if edit_person else ""
         body = f"""
         <section class="panel">
           <div class="toolbar">
@@ -810,8 +822,10 @@ class App(BaseHTTPRequestHandler):
             <a href="#people">常用人员</a>
             <a href="#templates">模板库</a>
             <a href="#rules">文件规则</a>
+            <a href="#logs">操作记录</a>
           </div>
         </section>
+        {overview_html}
         <section class="grid">
           <div class="panel">
             <h3>字段来源</h3>
@@ -828,38 +842,74 @@ class App(BaseHTTPRequestHandler):
               <div><strong>普通董事决议</strong><span>内部编号 M01，已生成 PDF 包。</span></div>
               <div><strong>转入文件包</strong><span>内部编号 M02，已按两份签字 PDF 生成。</span></div>
               <div><strong>股份转让包</strong><span>内部编号 M03，已生成转股决议、Instrument、股权证书和内部清单。</span></div>
+              <div><strong>增资配股包</strong><span>内部编号 M04，已生成授权、配股、申请书、证书和 Form 24。</span></div>
+              <div><strong>年审文件包</strong><span>内部编号 M05，已生成 AGM、AR 授权和复核清单。</span></div>
             </div>
           </div>
         </section>
         <section class="panel" id="users">
-          <h3>用户账户</h3>
-          <p class="muted">创建普通用户后，退出管理员账号再登录普通用户，就能看到员工操作页面。普通用户不能进入管理员后台，也看不到内部编号。</p>
-          {user_form_html(edit_user)}
-          <table><thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>最后登录</th><th>创建时间</th><th>操作</th></tr></thead><tbody>{user_rows or '<tr><td colspan="6">暂无用户</td></tr>'}</tbody></table>
-          <h4>最近系统操作</h4>
-          <table><thead><tr><th>时间</th><th>用户</th><th>动作</th><th>详情</th></tr></thead><tbody>{login_rows or '<tr><td colspan="4">暂无记录</td></tr>'}</tbody></table>
+          <div class="section-header">
+            <div>
+              <h3>用户账户</h3>
+              <p class="muted">管理员维护账号和权限；普通用户只能上传、复核、生成和下载文件。</p>
+            </div>
+            <span class="badge">{len(users)} 个账号</span>
+          </div>
+          <details class="admin-drawer"{user_form_open}>
+            <summary>{'编辑用户' if edit_user else '新增用户 / 重置密码'}</summary>
+            {user_form_html(edit_user)}
+          </details>
+          <div class="table-wrap"><table><thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>最后登录</th><th>创建时间</th><th>操作</th></tr></thead><tbody>{user_rows or '<tr><td colspan="6">暂无用户</td></tr>'}</tbody></table></div>
         </section>
         <section class="panel" id="people">
-          <h3>常用人员</h3>
-          <p class="muted">用于填表时调用常用秘书、挂名董事等资料。初始化的“公司秘书 A / 挂名董事 A”是示例数据，可以停用或直接改成真实资料。</p>
-          <form method="post" action="/settings/common-people/disable-samples" class="inline-form">
-            <button class="secondary-action" type="submit">停用全部示例人员</button>
-          </form>
-          {common_person_form_html(edit_person)}
-          <table><thead><tr><th>名称</th><th>身份/职务</th><th>证件类型</th><th>证件号</th><th>国籍</th><th>电话</th><th>状态</th><th>备注</th><th>操作</th></tr></thead><tbody>{people_rows or '<tr><td colspan="9">暂无常用人员</td></tr>'}</tbody></table>
+          <div class="section-header">
+            <div>
+              <h3>常用人员</h3>
+              <p class="muted">用于 Excel 里调用常用秘书、挂名董事、本地董事或客户签字人。示例数据可以停用，也可以直接改成真实资料。</p>
+            </div>
+            <form method="post" action="/settings/common-people/disable-samples" class="inline-form">
+              <button class="secondary-action" type="submit">停用全部示例人员</button>
+            </form>
+          </div>
+          <details class="admin-drawer"{person_form_open}>
+            <summary>{'编辑常用人员' if edit_person else '新增常用人员'}</summary>
+            {common_person_form_html(edit_person)}
+          </details>
+          <div class="table-wrap"><table><thead><tr><th>名称</th><th>身份/职务</th><th>证件类型</th><th>证件号</th><th>国籍</th><th>电话</th><th>状态</th><th>备注</th><th>操作</th></tr></thead><tbody>{people_rows or '<tr><td colspan="9">暂无常用人员</td></tr>'}</tbody></table></div>
         </section>
         <section class="panel" id="templates">
-          <h3>模板库</h3>
-          <p class="muted">Excel 导入模板给普通用户下载；正式文件模板只在管理员后台开放。上传新版后会先生成草稿和测试 PDF，确认无误后再启用。</p>
-          <h4>正式文件模板</h4>
-          <table><thead><tr><th>文件类型</th><th>分类</th><th>当前版本</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody>{document_template_rows}</tbody></table>
-          <h4>导入表和辅助文件</h4>
+          <div class="section-header">
+            <div>
+              <h3>模板库</h3>
+              <p class="muted">Excel 导入模板给员工下载；正式签字文件模板只在管理员后台维护。上传新版会先生成草稿 PDF，确认后再启用。</p>
+            </div>
+            <span class="badge">正式模板 {len(DOCUMENT_TEMPLATES)} 个</span>
+          </div>
+          <h4>正式签字文件模板</h4>
+          {document_template_sections}
+          <h4>Excel 导入表和辅助文件</h4>
           {import_template_toggle}
-          <table><thead><tr><th>内部键</th><th>业务名称</th><th>说明</th><th>可见范围</th><th>状态</th><th>下载</th></tr></thead><tbody>{template_rows}</tbody></table>
+          <div class="table-wrap"><table><thead><tr><th>内部键</th><th>业务名称</th><th>说明</th><th>可见范围</th><th>状态</th><th>下载</th></tr></thead><tbody>{template_rows}</tbody></table></div>
         </section>
         <section class="panel" id="rules">
-          <h3>文件判断规则</h3>
-          <table><thead><tr><th>规则编号</th><th>任务类型</th><th>事项</th><th>建议文件</th><th>签字方式</th><th>签字来源</th><th>合并</th><th>复核</th></tr></thead><tbody>{rule_rows or '<tr><td colspan="8">暂无规则</td></tr>'}</tbody></table>
+          <div class="section-header">
+            <div>
+              <h3>文件判断规则</h3>
+              <p class="muted">这里记录后台规则和内部编号，供管理员和开发排查。普通用户只看到业务名称。</p>
+            </div>
+            <span class="badge">{len(rules)} 条规则</span>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>规则编号</th><th>任务类型</th><th>事项</th><th>建议文件</th><th>签字方式</th><th>签字来源</th><th>合并</th><th>复核</th></tr></thead><tbody>{rule_rows or '<tr><td colspan="8">暂无规则</td></tr>'}</tbody></table></div>
+        </section>
+        <section class="panel" id="logs">
+          <div class="section-header">
+            <div>
+              <h3>最近系统操作</h3>
+              <p class="muted">保留登录、下载、模板变更和人员维护记录，方便内部追踪。</p>
+            </div>
+            <span class="badge">最近 30 条</span>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>时间</th><th>用户</th><th>动作</th><th>详情</th></tr></thead><tbody>{login_rows or '<tr><td colspan="4">暂无记录</td></tr>'}</tbody></table></div>
         </section>
         """
         self.send_html(render_page("管理员后台", body, user))
@@ -1665,6 +1715,55 @@ def public_template_cards(keys: list[str]) -> str:
     return "".join(cards)
 
 
+def admin_overview_html(users, people, rules, job_stats) -> str:
+    active_users = sum(1 for row in users if row["active"])
+    staff_users = sum(1 for row in users if row["role"] == "staff")
+    active_people = sum(1 for row in people if row["active"])
+    sample_people = sum(1 for row in people if str(row["notes"] or "").startswith("示例"))
+    active_imports = sum(1 for key in ACTIVE_IMPORT_TEMPLATE_KEYS if TEMPLATE_DOWNLOADS.get(key, ("", Path()))[1].exists())
+    missing_imports = sum(1 for key in ACTIVE_IMPORT_TEMPLATE_KEYS if not TEMPLATE_DOWNLOADS.get(key, ("", Path()))[1].exists())
+    registry = load_template_registry()
+    draft_templates = sum(
+        1
+        for state in registry.values()
+        if isinstance(state, dict) and isinstance(state.get("draft"), dict)
+    )
+    missing_doc_templates = sum(1 for meta in DOCUMENT_TEMPLATES.values() if not meta["path"].exists())
+    total_jobs = int(job_stats["total_jobs"] or 0) if job_stats else 0
+    blocked_jobs = int(job_stats["blocked_jobs"] or 0) if job_stats else 0
+    pdf_jobs = int(job_stats["pdf_jobs"] or 0) if job_stats else 0
+    cards = [
+        ("用户账户", f"{active_users}/{len(users)} 启用", f"普通用户 {staff_users} 个"),
+        ("常用人员", f"{active_people}/{len(people)} 启用", f"示例资料 {sample_people} 个"),
+        ("导入表", f"{active_imports} 个正式入口", f"缺失 {missing_imports} 个"),
+        ("正式模板", f"{len(DOCUMENT_TEMPLATES) - missing_doc_templates}/{len(DOCUMENT_TEMPLATES)} 可用", f"待启用草稿 {draft_templates} 个"),
+        ("文件规则", f"{len(rules)} 条", "用于判断文件包和签字逻辑"),
+        ("生成任务", f"{total_jobs} 个历史任务", f"已生成 PDF {pdf_jobs} 个；需修正 {blocked_jobs} 个"),
+    ]
+    card_html = "".join(
+        f"""
+        <div class="admin-kpi">
+          <span>{h(label)}</span>
+          <strong>{h(value)}</strong>
+          <small>{h(note)}</small>
+        </div>
+        """
+        for label, value, note in cards
+    )
+    return f"""
+    <section class="panel" id="overview">
+      <div class="section-header">
+        <div>
+          <h3>后台总览</h3>
+          <p class="muted">先看账号、常用人员、模板和任务状态；需要维护时再进入下面对应模块。</p>
+        </div>
+        <span class="badge">维护面板</span>
+      </div>
+      <div class="admin-kpi-grid">{card_html}</div>
+    </section>
+    """
+
+
 def template_library_rows_html(show_archived: bool = False) -> str:
     keys = [key for key in TEMPLATE_DOWNLOADS if key in ACTIVE_IMPORT_TEMPLATE_KEYS]
     if show_archived:
@@ -1687,38 +1786,77 @@ def template_library_row(key: str, label: str, path: Path, archived: bool = Fals
     return f"<tr{row_class}><td>{h(key)}</td><td>{h(title)}</td><td>{h(note)}</td><td>{h(visibility)}</td><td>{h(status)}</td><td>{link}</td></tr>"
 
 
+def document_template_sections_html() -> str:
+    registry = load_template_registry()
+    grouped: dict[str, list[str]] = {}
+    for key, meta in DOCUMENT_TEMPLATES.items():
+        category = str(meta["category"])
+        grouped.setdefault(category, []).append(document_template_row_html(key, meta, registry))
+    sections = []
+    for category, rows in grouped.items():
+        sections.append(
+            f"""
+            <div class="template-group">
+              <div class="template-group-title">
+                <strong>{h(category)}</strong>
+                <span>{len(rows)} 个模板</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>文件类型</th><th>内部键</th><th>当前版本</th><th>状态</th><th>说明</th><th>操作</th></tr></thead>
+                  <tbody>{''.join(rows)}</tbody>
+                </table>
+              </div>
+            </div>
+            """
+        )
+    return "".join(sections) or "<p class='muted'>暂无正式文件模板</p>"
+
+
 def document_template_rows_html() -> str:
     registry = load_template_registry()
     rows = []
     for key, meta in DOCUMENT_TEMPLATES.items():
-        state = registry.get(key, {})
-        draft = state.get("draft") if isinstance(state.get("draft"), dict) else None
-        path = meta["path"]
-        version = state.get("version") or meta["version"]
-        status = state.get("status") or meta["status"]
-        updated = state.get("updated_at")
-        status_text = f"{status}；{updated}" if updated else status
-        if not path.exists():
-            status_text = "缺失"
-        download = f"<a href='/document-template/{h(key)}'>下载模板</a>" if path.exists() else ""
-        preview = ""
-        preview_name = state.get("preview_pdf", "")
-        if preview_name and (GENERATED_DIR / Path(preview_name).name).exists():
-            preview = f"<a href='/generated/{h(Path(preview_name).name)}'>预览 PDF</a>"
-        draft_html = template_draft_panel(key, draft)
-        history_form = template_history_form(key, state)
-        upload_form = f"""
-        <form method="post" action="/settings/template/upload" enctype="multipart/form-data" class="inline-upload">
-          <input type="hidden" name="template_key" value="{h(key)}">
-          <input name="version" placeholder="新版号，如 v1.4">
-          <input type="file" name="file" accept=".docx" required>
-          <button type="submit">上传新版草稿</button>
-        </form>
-        """
-        rows.append(
-            f"<tr><td>{h(meta['name'])}<span class='dev-code'>{h(key)}</span></td><td>{h(meta['category'])}</td><td>{h(version)}</td><td>{h(status_text)}</td><td>{h(meta['note'])}</td><td><div class='template-actions'>{download}{preview}{draft_html}{upload_form}{history_form}</div></td></tr>"
-        )
+        rows.append(document_template_row_html(key, meta, registry, include_category=True))
     return "".join(rows) or '<tr><td colspan="6">暂无正式文件模板</td></tr>'
+
+
+def document_template_row_html(key: str, meta: dict[str, object], registry: dict[str, dict[str, object]], include_category: bool = False) -> str:
+    state = registry.get(key, {})
+    draft = state.get("draft") if isinstance(state.get("draft"), dict) else None
+    path = meta["path"]
+    version = state.get("version") or meta["version"]
+    status = state.get("status") or meta["status"]
+    updated = state.get("updated_at")
+    status_text = f"{status}；{updated}" if updated else status
+    status_kind = "ok"
+    if draft:
+        status_text = f"{status_text}；有草稿待启用"
+        status_kind = "draft"
+    if not path.exists():
+        status_text = "缺失"
+        status_kind = "danger"
+    download = f"<a href='/document-template/{h(key)}'>下载模板</a>" if path.exists() else ""
+    preview = ""
+    preview_name = state.get("preview_pdf", "")
+    if preview_name and (GENERATED_DIR / Path(preview_name).name).exists():
+        preview = f"<a href='/generated/{h(Path(preview_name).name)}'>预览 PDF</a>"
+    draft_html = template_draft_panel(key, draft)
+    history_form = template_history_form(key, state)
+    upload_form = f"""
+    <form method="post" action="/settings/template/upload" enctype="multipart/form-data" class="inline-upload">
+      <input type="hidden" name="template_key" value="{h(key)}">
+      <input name="version" placeholder="新版号，如 v1.4">
+      <input type="file" name="file" accept=".docx" required>
+      <button type="submit">上传新版草稿</button>
+    </form>
+    """
+    category_cell = f"<td>{h(meta['category'])}</td>" if include_category else ""
+    return (
+        f"<tr><td>{h(meta['name'])}</td>{category_cell}<td><span class='dev-code'>{h(key)}</span></td>"
+        f"<td>{h(version)}</td><td><span class='status-pill {status_kind}'>{h(status_text)}</span></td>"
+        f"<td>{h(meta['note'])}</td><td><div class='template-actions'>{download}{preview}{draft_html}{upload_form}{history_form}</div></td></tr>"
+    )
 
 
 def template_history_form(key: str, state: dict[str, object]) -> str:
@@ -1841,9 +1979,7 @@ def role_options(selected: str) -> str:
 def user_form_html(edit_user) -> str:
     editing = bool(edit_user)
     active = True if not edit_user else bool(edit_user["active"])
-    title = "编辑用户" if editing else "新增用户"
     return f"""
-    <h4>{title}</h4>
     <form method="post" action="/settings/users/save" class="admin-form">
       <input type="hidden" name="id" value="{h(row_value(edit_user, 'id'))}">
       <label>用户名<input name="username" value="{h(row_value(edit_user, 'username'))}" required placeholder="例如 staff01"></label>
@@ -1860,6 +1996,7 @@ def user_table_row(row, current_user: dict) -> str:
     active = bool(row["active"])
     toggle_label = "停用" if active else "启用"
     toggle_value = "0" if active else "1"
+    status = "<span class='status-pill ok'>启用</span>" if active else "<span class='status-pill muted'>停用</span>"
     disable_self = str(row["id"]) == str(current_user["id"]) and active
     toggle_form = (
         "<span class='muted'>当前账号</span>"
@@ -1876,7 +2013,7 @@ def user_table_row(row, current_user: dict) -> str:
     <tr>
       <td>{h(row['username'])}</td>
       <td>{h(role_label(row['role']))}</td>
-      <td>{'启用' if active else '停用'}</td>
+      <td>{status}</td>
       <td>{h(row['last_login_at'])}</td>
       <td>{h(row['created_at'])}</td>
       <td><div class="row-actions"><a href="/settings?edit_user={h(row['id'])}">编辑</a>{toggle_form}</div></td>
@@ -1930,9 +2067,7 @@ def common_person_form_html(edit_person) -> str:
     roles = split_person_roles(row_value(edit_person, "default_role"))
     if edit_person and bool(edit_person["is_local_resident_director"]) and "Local Resident Director" not in roles:
         roles.append("Local Resident Director")
-    title = "编辑常用人员" if editing else "新增常用人员"
     return f"""
-    <h4>{title}</h4>
     <form method="post" action="/settings/common-people/save" class="admin-form">
       <input type="hidden" name="id" value="{h(row_value(edit_person, 'id'))}">
       <label>显示名称<input name="display_name" value="{h(row_value(edit_person, 'display_name'))}" required></label>
@@ -1956,6 +2091,7 @@ def common_person_table_row(row) -> str:
     active = bool(row["active"])
     toggle_label = "停用" if active else "启用"
     toggle_value = "0" if active else "1"
+    status = "<span class='status-pill ok'>启用</span>" if active else "<span class='status-pill muted'>停用</span>"
     note = row["notes"] or ""
     if str(note).startswith("示例"):
         note = f"{note}；示例数据"
@@ -1980,7 +2116,7 @@ def common_person_table_row(row) -> str:
       <td>{h(row['id_number'])}</td>
       <td>{h(row['nationality'])}</td>
       <td>{h(row['phone'])}</td>
-      <td>{'启用' if active else '停用'}</td>
+      <td>{status}</td>
       <td>{h(note)}</td>
       <td><div class="row-actions"><a href="/settings?edit_person={h(row['id'])}#people">编辑</a>{toggle_form}{delete_form}</div></td>
     </tr>

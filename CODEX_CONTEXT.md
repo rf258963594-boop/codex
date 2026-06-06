@@ -11,6 +11,7 @@
 - 已接入 P2 的 M01-M05 文件包。
 - 已有 Docker / LibreOffice / PDF 转换部署说明。
 - 已有 GitHub 私有仓库，用于后续 Codex 接力开发和审核。
+- 管理员后台已经整理为总览、用户账户、常用人员、模板库、文件规则和操作记录几个模块。
 
 当前仓库只包含代码、正式模板、干净导入表、假数据测试表和阶段说明。真实客户上传文件、生成文件、本地数据库、日志和缓存都已被 `.gitignore` 排除。
 
@@ -217,6 +218,7 @@ PDF 生成依赖 LibreOffice。云端部署建议使用 Docker 固定 LibreOffic
 - `app/doc_render.py`：DOCX 转 PDF 渲染逻辑。
 - `app/db.py`：本地 SQLite 数据库。
 - `app/static/styles.css`：网站样式。
+- `tools/web_admin_settings_smoke_test.py`：后台页面检查，确认管理员后台可打开、普通用户不可进入。
 
 工具脚本：
 
