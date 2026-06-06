@@ -827,7 +827,7 @@ def normalize_quick_rows(rows: list[dict[str, Any]], company: dict[str, Any]) ->
     for row in rows:
         item = dict(row)
         if not item.get("generate"):
-            item["generate"] = "No"
+            item["generate"] = "Auto"
         if default_date:
             for key in ["transfer_date", "allotment_date", "authority_date"]:
                 if key in item and not item.get(key):

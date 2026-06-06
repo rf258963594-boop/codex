@@ -80,7 +80,7 @@ TEMPLATE_NOTES = {
     "registration_human_sample": ("新公司注册 v3 示例", "给 AI 或人工参考填写方式"),
     "registration_blank": ("旧版注册 v2 横排表", "管理员保留，普通入口已隐藏"),
     "registration_sample": ("旧版注册 v2 示例", "管理员保留，普通入口已隐藏"),
-    "maintenance_blank": ("维护/变更/年审 v7 一页式业务单", "推荐：最少字段先生成文件，另含快速年审页；M01 签字人名单支持多个董事"),
+    "maintenance_blank": ("维护/变更/年审 v7 一页式业务单", "推荐：最少字段先生成文件，另含快速年审页；普通董事决议签字人支持多个董事"),
     "maintenance_sample": ("维护/变更/年审 v7 示例", "示例含多个董事签字人、董事辞任、委任、可选转股和快速年审默认字段"),
     "maintenance_v5_blank": ("旧版 P2 v5 详情开关表", "管理员保留，适合需要更多结构化字段时使用"),
     "maintenance_v5_sample": ("旧版 P2 v5 示例", "管理员保留，普通入口已改用 v6"),
@@ -476,8 +476,8 @@ class App(BaseHTTPRequestHandler):
         <section class="panel">
           <div class="toolbar">
             <div>
-              <h2>上传资料表，生成签字 PDF 包</h2>
-              <p class="muted">先上传注册或维护/变更/年审资料表，系统会检查字段、签字人和文件清单。确认无严重错误后再生成 PDF 文件包。</p>
+              <h2>文件生成工作台</h2>
+              <p class="muted">选择对应业务表，上传后先复核系统判断，再生成签字 PDF 包。</p>
             </div>
             <span class="badge">内部试运行</span>
           </div>
@@ -487,14 +487,18 @@ class App(BaseHTTPRequestHandler):
           </form>
         </section>
         <section class="panel">
-          <h3>导入模板下载</h3>
-          <div class="template-section">
-            <h4>新公司注册 P1</h4>
-            <div class="download-grid">{p1_cards or '<p class="muted">未找到 P1 导入模板，请先检查 outputs 文件夹。</p>'}</div>
-          </div>
-          <div class="template-section">
-            <h4>维护 / 变更 / 年审 P2</h4>
-            <div class="download-grid">{p2_cards or '<p class="muted">未找到 P2 导入模板，请先检查 outputs 文件夹。</p>'}</div>
+          <h3>选择业务入口</h3>
+          <div class="operation-grid">
+            <div class="operation-card">
+              <strong>注册文件生成</strong>
+              <p>用于新加坡新公司注册后整套签字文件。适合董事、秘书、股东、Form 24、RORC 和股权证书。</p>
+              <div class="download-grid compact">{p1_cards or '<p class="muted">未找到注册导入模板。</p>'}</div>
+            </div>
+            <div class="operation-card">
+              <strong>变更 / 年审文件生成</strong>
+              <p>用于普通董事决议、转入、股份转让、增资配股和年审包。系统会根据表格内容自动判断要生成哪些文件。</p>
+              <div class="download-grid compact">{p2_cards or '<p class="muted">未找到变更/年审导入模板。</p>'}</div>
+            </div>
           </div>
         </section>
         <section class="grid">
@@ -509,7 +513,11 @@ class App(BaseHTTPRequestHandler):
           </div>
           <div class="panel">
             <h3>当前可生成</h3>
-            <p>新公司注册文件包已接入 PDF 生成；P2 维护/变更/年审表已改为竖排主入口，并接入 M01 普通董事决议、M02 转入包、M03 股份转让和 M04 增资配股 PDF 生成。年审包先显示判断预览，后续接入。</p>
+            <p>新公司注册、普通董事决议、转入、股份转让、增资配股和年审包都已接入 PDF 生成。普通用户只需要上传资料表、复核文件清单、生成并下载 PDF 包。</p>
+          </div>
+          <div class="panel">
+            <h3>默认填写规则</h3>
+            <p>空白或 Auto 通常表示由系统自动判断；明确填写 No 才会关闭对应事项。公司资料变更填写新值即可触发；人员任免、转股和配股填写核心行信息即可触发。签字人留空时系统会提醒人工复核。</p>
           </div>
         </section>
         <section class="panel warning">
@@ -584,32 +592,32 @@ class App(BaseHTTPRequestHandler):
         generated_m04_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P2_M04_pdf_package.zip"
         generated_m05_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P2_M05_pdf_package.zip"
         generated_link = (
-            f"<a class='button-link' href='/generated/{h(generated_zip.name)}'>下载注册 PDF 包</a>"
+            f"<a class='button-link' href='/generated/{h(generated_zip.name)}'>{h(download_label('P1', user))}</a>"
             if generated_zip.exists()
             else ""
         )
         generated_m01_link = (
-            f"<a class='button-link secondary' href='/generated/{h(generated_m01_zip.name)}'>下载普通董事决议 PDF 包</a>"
+            f"<a class='button-link secondary' href='/generated/{h(generated_m01_zip.name)}'>{h(download_label('M01', user))}</a>"
             if generated_m01_zip.exists()
             else ""
         )
         generated_m02_link = (
-            f"<a class='button-link secondary' href='/generated/{h(generated_m02_zip.name)}'>下载转入 M02 PDF 包</a>"
+            f"<a class='button-link secondary' href='/generated/{h(generated_m02_zip.name)}'>{h(download_label('M02', user))}</a>"
             if generated_m02_zip.exists()
             else ""
         )
         generated_m03_link = (
-            f"<a class='button-link secondary' href='/generated/{h(generated_m03_zip.name)}'>下载股份转让 M03 PDF 包</a>"
+            f"<a class='button-link secondary' href='/generated/{h(generated_m03_zip.name)}'>{h(download_label('M03', user))}</a>"
             if generated_m03_zip.exists()
             else ""
         )
         generated_m04_link = (
-            f"<a class='button-link secondary' href='/generated/{h(generated_m04_zip.name)}'>下载增资配股 M04 PDF 包</a>"
+            f"<a class='button-link secondary' href='/generated/{h(generated_m04_zip.name)}'>{h(download_label('M04', user))}</a>"
             if generated_m04_zip.exists()
             else ""
         )
         generated_m05_link = (
-            f"<a class='button-link secondary' href='/generated/{h(generated_m05_zip.name)}'>下载年审 M05 PDF 包</a>"
+            f"<a class='button-link secondary' href='/generated/{h(generated_m05_zip.name)}'>{h(download_label('M05', user))}</a>"
             if generated_m05_zip.exists()
             else ""
         )
@@ -618,7 +626,7 @@ class App(BaseHTTPRequestHandler):
             f"""
             <form method="post" action="/generate-p1">
               <input type="hidden" name="job_id" value="{h(row['id'])}">
-              <button type="submit">生成注册 PDF 包</button>
+              <button type="submit">{h(generate_button_label('P1', user))}</button>
               {dev_code('P1', user)}
             </form>
             """
@@ -633,7 +641,7 @@ class App(BaseHTTPRequestHandler):
                         f"""
                         <form method="post" action="/generate-p2-m01">
                           <input type="hidden" name="job_id" value="{h(row['id'])}">
-                          <button type="submit">生成普通董事决议 M01 PDF 包</button>
+                          <button type="submit">{h(generate_button_label('M01', user))}</button>
                           {dev_code('M01', user)}
                         </form>
                         """
@@ -643,7 +651,7 @@ class App(BaseHTTPRequestHandler):
                         f"""
                         <form method="post" action="/generate-p2-m02">
                           <input type="hidden" name="job_id" value="{h(row['id'])}">
-                          <button type="submit">生成转入 M02 PDF 包</button>
+                          <button type="submit">{h(generate_button_label('M02', user))}</button>
                           {dev_code('M02', user)}
                         </form>
                         """
@@ -653,7 +661,7 @@ class App(BaseHTTPRequestHandler):
                         f"""
                         <form method="post" action="/generate-p2-m03">
                           <input type="hidden" name="job_id" value="{h(row['id'])}">
-                          <button type="submit">生成股份转让 M03 PDF 包</button>
+                          <button type="submit">{h(generate_button_label('M03', user))}</button>
                           {dev_code('M03', user)}
                         </form>
                         """
@@ -663,7 +671,7 @@ class App(BaseHTTPRequestHandler):
                         f"""
                         <form method="post" action="/generate-p2-m04">
                           <input type="hidden" name="job_id" value="{h(row['id'])}">
-                          <button type="submit">生成增资配股 M04 PDF 包</button>
+                          <button type="submit">{h(generate_button_label('M04', user))}</button>
                           {dev_code('M04', user)}
                         </form>
                         """
@@ -673,7 +681,7 @@ class App(BaseHTTPRequestHandler):
                         f"""
                         <form method="post" action="/generate-p2-m05">
                           <input type="hidden" name="job_id" value="{h(row['id'])}">
-                          <button type="submit">生成年审 M05 PDF 包</button>
+                          <button type="submit">{h(generate_button_label('M05', user))}</button>
                           {dev_code('M05', user)}
                         </form>
                         """
@@ -682,7 +690,7 @@ class App(BaseHTTPRequestHandler):
                 <div class="stack">
                   {''.join(maintenance_forms)}
                 </div>
-                <p class="muted">已接入 M01 普通董事决议、M02 转入包、M03 股份转让包、M04 增资配股包和 M05 年审包。</p>
+                <p class="muted">已接入普通董事决议、转入文件、股份转让、增资配股和年审文件包。</p>
                 """
             elif row["task_type"] == "maintenance":
                 generate_control = "<p class='muted'>这张表没有识别到已接入生成器的事项；文件包先保留为预览。</p>"
@@ -988,7 +996,7 @@ class App(BaseHTTPRequestHandler):
         suggestions = json.loads(row["suggestions_json"])
         errors = suggestions.get("summary", {}).get("blocking_errors", [])
         if row["task_type"] != "maintenance":
-            return self.error_page(HTTPStatus.BAD_REQUEST, "普通董事决议生成只支持公司维护/变更年审 v3 表。")
+            return self.error_page(HTTPStatus.BAD_REQUEST, "普通董事决议生成只支持公司维护/变更/年审业务单。")
         if errors:
             return self.error_page(HTTPStatus.BAD_REQUEST, "存在严重错误，请先修正 Excel 后重新上传。")
         if suggestions.get("summary", {}).get("m01_available") != "Yes":
@@ -1076,11 +1084,11 @@ class App(BaseHTTPRequestHandler):
         suggestions = json.loads(row["suggestions_json"])
         errors = suggestions.get("summary", {}).get("blocking_errors", [])
         if row["task_type"] != "maintenance":
-            return self.error_page(HTTPStatus.BAD_REQUEST, "年审包生成只支持公司维护/变更年审表。")
+            return self.error_page(HTTPStatus.BAD_REQUEST, "年审包生成只支持公司维护/变更/年审业务单。")
         if errors:
             return self.error_page(HTTPStatus.BAD_REQUEST, "存在严重错误，请先修改 Excel 后重新上传。")
         if suggestions.get("summary", {}).get("m05_available") != "Yes":
-            return self.error_page(HTTPStatus.BAD_REQUEST, "没有识别到可生成年审 M05 包的事项。")
+            return self.error_page(HTTPStatus.BAD_REQUEST, "没有识别到可生成年审文件包的事项。")
         out_path = generate_p2_m05_pdf_package(parsed, row["job_code"])
         with connect() as conn:
             conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("p2_m05_pdf_generated", job_id))
@@ -2009,6 +2017,36 @@ def package_code(package_name: str, task_type: str = "") -> str:
     }.get(package_name, "")
 
 
+def generate_button_label(code: str, user: dict | None) -> str:
+    admin = bool(user and user.get("role") == "admin")
+    labels = {
+        "P1": "生成注册文件 PDF 包",
+        "M01": "生成普通变更董事决议 PDF 包",
+        "M02": "生成转入文件 PDF 包",
+        "M03": "生成股份转让 PDF 包",
+        "M04": "生成增资配股 PDF 包",
+        "M05": "生成年审 PDF 包",
+    }
+    if admin and code != "P1":
+        return f"{labels.get(code, '生成 PDF 包')}（{code}）"
+    return labels.get(code, "生成 PDF 包")
+
+
+def download_label(code: str, user: dict | None) -> str:
+    admin = bool(user and user.get("role") == "admin")
+    labels = {
+        "P1": "下载注册文件 PDF 包",
+        "M01": "下载普通变更董事决议 PDF 包",
+        "M02": "下载转入文件 PDF 包",
+        "M03": "下载股份转让 PDF 包",
+        "M04": "下载增资配股 PDF 包",
+        "M05": "下载年审 PDF 包",
+    }
+    if admin and code != "P1":
+        return f"{labels.get(code, '下载 PDF 包')}（{code}）"
+    return labels.get(code, "下载 PDF 包")
+
+
 def summary_cards(summary: dict[str, object]) -> str:
     task_type = str(summary.get("task_type", ""))
     if task_type == "maintenance":
@@ -2164,7 +2202,7 @@ def generation_steps(row, summary: dict[str, object], can_generate: bool, can_ge
         ]
     elif task_type == "maintenance":
         action = "生成已接入的 PDF 文件包" if can_generate_p2 else "等待对应文件包接入"
-        detail = "当前已接入 M01 普通董事决议、M02 转入包、M03 股份转让包和 M04 增资配股包；年审先按预览复核。" if can_generate_p2 else "当前事项还没有对应生成器，先按文件预览复核。"
+        detail = "当前已接入普通董事决议、转入、股份转让、增资配股和年审包；生成前请先核对复核提醒和签字人。" if can_generate_p2 else "当前事项还没有对应生成器，先按文件预览复核。"
         steps = [
             ("1", "核对变更事项", "确认每个事项是否需要生成、是否同组 DR、签字人是否正确。"),
             ("2", "处理复核提醒", "高风险事项先人工确认，再进入生成。"),
@@ -2369,13 +2407,13 @@ def status_label(status: str) -> str:
         "needs_review": "待确认",
         "parsed": "已解析",
         "docx_generated": "已生成旧文件包",
-        "p2_m01_generated": "已生成旧普通 DR",
+        "p2_m01_generated": "已生成普通董事决议",
         "pdf_generated": "已生成 PDF 包",
-        "p2_m01_pdf_generated": "已生成普通 DR PDF",
-        "p2_m02_pdf_generated": "已生成转入 M02 PDF",
-        "p2_m03_pdf_generated": "已生成股份转让 M03 PDF",
-        "p2_m04_pdf_generated": "已生成增资配股 M04 PDF",
-        "p2_m05_pdf_generated": "已生成年审 M05 PDF",
+        "p2_m01_pdf_generated": "已生成普通董事决议 PDF",
+        "p2_m02_pdf_generated": "已生成转入文件 PDF",
+        "p2_m03_pdf_generated": "已生成股份转让 PDF",
+        "p2_m04_pdf_generated": "已生成增资配股 PDF",
+        "p2_m05_pdf_generated": "已生成年审 PDF",
     }.get(status, status)
 
 

@@ -278,6 +278,7 @@ EGM_EVENT_LABELS = {
 
 def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
     company = parsed.get("company", {})
+    people = parsed.get("people", [])
     events = [row for row in parsed.get("change_events", []) if active_change_event(row)]
     transfers = [row for row in parsed.get("share_transfers", []) if active_data_row(row, "generate", ["transferor_name", "transferee_name", "shares_transferred"])]
     allotments = [row for row in parsed.get("share_allotments", []) if active_data_row(row, "generate", ["allottee_name", "shares_allotted", "total_paid"])]
@@ -286,7 +287,7 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
 
     blocking_errors: list[str] = []
     warnings: list[str] = []
-    info: list[str] = ["P2 已接入 M01 普通董事决议、M02 转入包、M03 股份转让包、M04 增资配股包和 M05 年审包生成。"]
+    info: list[str] = ["公司维护/变更/年审表已支持普通董事决议、转入文件、股份转让、增资配股和年审文件包生成。"]
     files: list[dict[str, Any]] = []
     preview: list[dict[str, Any]] = []
     detected: list[str] = []
@@ -319,6 +320,29 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
             resignation_letters.append(label)
         if is_yes(row.get("manual_review_required")) or event_type in {"remove_director", "change_company_name", "strike_off", "transfer_in_non_cooperative"}:
             high_risk_items.append(label)
+
+    director_signer_hint = text(
+        company.get("director_signer_names")
+        or company.get("director_signer_name")
+        or annual.get("director_signer_name")
+        or annual.get("director_signer_names")
+    )
+    member_signer_hint = text(
+        company.get("member_signer_names")
+        or company.get("shareholder_signer_names")
+        or company.get("client_signatory_name")
+        or annual.get("shareholder_signer_name")
+        or annual.get("shareholder_signer_names")
+    )
+    has_director_candidate = any(role_has(person, "is_director") for person in people)
+    has_client_candidate = any(
+        role_has(person, "is_shareholder") or role_has(person, "is_client_signatory")
+        for person in people
+    )
+    if (dr_groups or transfers or allotments or annual_required) and not director_signer_hint and not has_director_candidate:
+        warnings.append("缺少董事签字人。系统可以生成文件，但董事签字栏可能为空，请在表格填写 director_signer_names 或在人员资料中标记董事。")
+    if (transfer_in_items or allotments or annual_required) and not member_signer_hint and not has_client_candidate:
+        warnings.append("缺少股东/客户授权签字人。系统可以生成文件，但股东或客户授权签字栏可能为空，请填写 member_signer_names 或 client_signatory_name。")
 
     if dr_groups:
         for group, labels in dr_groups.items():

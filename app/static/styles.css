@@ -91,6 +91,36 @@ main {
   gap: 12px;
 }
 
+.download-grid.compact {
+  grid-template-columns: 1fr;
+  margin-top: 12px;
+}
+
+.operation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.operation-card {
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  padding: 18px;
+  background: #f8fafc;
+}
+
+.operation-card strong {
+  display: block;
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.operation-card p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.55;
+}
+
 .download-card,
 .metric {
   border: 1px solid #d9e2ec;

@@ -3,6 +3,7 @@
 This repository is the internal RSIN corporate secretary document generator MVP.
 
 For a fuller Chinese handoff that lets another Codex continue without reading the whole chat history, start with `CODEX_CONTEXT.md`.
+For the latest default-value and staff-flow regression notes, also read `DEFAULT_VALUE_REGRESSION_SUMMARY.md`.
 
 ## Current stage
 
@@ -19,6 +20,7 @@ For a fuller Chinese handoff that lets another Codex continue without reading th
 - P2 M03: share transfer package.
 - P2 M04: share allotment package.
 - P2 M05: annual review package.
+- Default-value regression fixtures now cover P1 and P2 M01-M05 with sparse input.
 
 ## Important directories
 

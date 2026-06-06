@@ -23,7 +23,7 @@ KEY_FONT = Font(color="475569", size=9)
 NOTE_FONT = Font(color="334155")
 WRAP = Alignment(wrap_text=True, vertical="top")
 
-YES_NO = '"No,Yes"'
+YES_NO = '"Auto,Yes,No"'
 PERSON_ACTIONS = '"appoint_director,resign_director,appoint_secretary,resign_secretary"'
 FIELD_LABELS = '"ID type,ID number,Residential address,Email,Phone,Nationality,Name,Other"'
 TRANSFER_MODE = '"cooperative,non_cooperative"'
@@ -46,24 +46,24 @@ KV_FIELDS = [
     ("数据来源", "Source type", "source_type", "AI", "可空", "AI / BizFile / Excel / Manual。"),
     ("来源文件编号", "Source file ID", "source_file_id", "", "可空", "可填 BizFile 或旧表文件名。"),
     ("经办人", "Prepared by", "prepared_by", "", "可空", "内部记录。"),
-    ("是否变更注册地址", "Change registered office", "change_registered_office_required", "No", "选 Yes 才生成", ""),
+    ("是否变更注册地址", "Change registered office", "change_registered_office_required", "", "默认 Auto", "留空/Auto 时，填写新注册地址即可生成；填 No 则不生成。"),
     ("新注册地址", "New registered office", "new_registered_office_address", "", "地址变更时填", ""),
-    ("是否变更营业范围", "Change business activity", "change_business_activity_required", "No", "选 Yes 才生成", "支持主业务和副业务。"),
+    ("是否变更营业范围", "Change business activity", "change_business_activity_required", "", "默认 Auto", "留空/Auto 时，填写新 SSIC/业务范围即可生成；填 No 则不生成。支持主业务和副业务。"),
     ("新主 SSIC", "New primary SSIC", "new_primary_ssic", "", "可空", ""),
     ("新主营业范围", "New primary activity", "new_primary_activity", "", "营业范围变更时填", ""),
     ("新副 SSIC", "New secondary SSIC", "new_secondary_ssic", "", "可空", ""),
     ("新副营业范围", "New secondary activity", "new_secondary_activity", "", "可空", ""),
-    ("是否变更 FYE", "Change FYE", "change_fye_required", "No", "选 Yes 才生成", ""),
+    ("是否变更 FYE", "Change FYE", "change_fye_required", "", "默认 Auto", "留空/Auto 时，填写新 FYE 即可生成；填 No 则不生成。"),
     ("旧 FYE", "Old FYE", "old_fye", "", "FYE 变更时填", "DD/MM/YYYY。"),
     ("新 FYE", "New FYE", "new_fye", "", "FYE 变更时填", "DD/MM/YYYY。"),
     ("下个账期开始", "Next accounts period start", "next_accounts_period_start", "", "可空", ""),
     ("下个账期结束", "Next accounts period end", "next_accounts_period_end", "", "可空", ""),
-    ("是否转入秘书公司", "Transfer-in required", "transfer_in_required", "No", "选 Yes 才生成", "M02 后续接入。"),
+    ("是否转入秘书公司", "Transfer-in required", "transfer_in_required", "", "需要时填 Yes", "转入没有可靠的新值触发项；需要转入时填 Yes。"),
     ("转入模式", "Transfer-in mode", "transfer_in_mode", "cooperative", "可空", "cooperative / non_cooperative。"),
     ("旧秘书公司", "Old secretary firm", "old_secretary_company", "", "可空", ""),
     ("新秘书公司", "New secretary firm", "new_secretary_company", "RSIN GROUP PTE. LTD.", "可空", ""),
     ("是否出辞职信", "Generate resignation letter", "generate_resignation_letter", "No", "可空", "不配合转入通常 No。"),
-    ("是否做年审", "Annual review required", "annual_review_required", "No", "选 Yes 才生成", "年审包后续接入。"),
+    ("是否做年审", "Annual review required", "annual_review_required", "", "默认 Auto", "留空/Auto 时，填写 FYE 或 AGM 日期即可生成年审包；填 No 则不生成。"),
     ("年审 FYE", "Annual review FYE", "fye_date", "", "年审时填", "DD/MM/YYYY。"),
     ("AGM 日期", "AGM date", "agm_date", "", "可空", "DD/MM/YYYY。"),
     ("年审备注", "Annual review remarks", "annual_review_remarks", "", "可空", "复杂情况写这里；详细字段可填“快速年审”页。"),
@@ -71,7 +71,7 @@ KV_FIELDS = [
 ]
 
 ANNUAL_FIELDS = [
-    ("是否做年审", "Annual review required", "annual_review_required", "No", "选 Yes 才生成", "这是年审页主开关。"),
+    ("是否做年审", "Annual review required", "annual_review_required", "", "默认 Auto", "留空/Auto 时，填写 FYE 或 AGM 日期即可生成年审包；填 No 则不生成。"),
     ("财年结束日", "Financial year end", "fye_date", "", "必填", "DD/MM/YYYY。"),
     ("AGM 日期", "AGM date", "agm_date", "", "建议填", "留空后续可由系统按规则推定。"),
     ("AGM 时间", "AGM time", "agm_time", "10.00 a.m.", "默认", "通常不用改。"),
@@ -427,7 +427,7 @@ def build_annual_sheet(wb: Workbook, sample: bool) -> None:
     ws.append([])
     ws.append(["项目", "English", "field_key", "填写内容 / Value", "必填", "说明"])
     annual_sample = {
-        "annual_review_required": "No",
+        "annual_review_required": "Yes",
         "fye_date": "31/12/2025",
         "agm_date": "30/06/2026",
         "director_signer_name": "ZHANG YI",
