@@ -97,6 +97,7 @@ PDF 生成依赖 LibreOffice。云端部署建议使用 Docker 固定 LibreOffic
 - M01 是普通 DR，适合多项普通变更组合到一份董事决议。
 - 签字逻辑默认所有指定董事签字。
 - 一页式 V7 表格是当前主要入口。
+- P2 维护/变更表若 `default_document_date` 留空，系统默认使用生成当天的新加坡日期；人员任免/转入等事项生效日期留空时也沿用该默认日期。
 - 业务范围变更只显示新内容，不强制显示旧内容框。
 - 人员任免模板目前以姓名和日期为主，不强制 IC 和地址。
 
@@ -119,6 +120,7 @@ PDF 生成依赖 LibreOffice。云端部署建议使用 Docker 固定 LibreOffic
 - 用户希望签字顺序和文件包逻辑更顺：决议类和交接/辞职类分成两个 PDF。
 - 多股东、多董事签字已考虑。
 - 公司注册地址变更可以和转入一起处理。
+- M02 签字栏的 Date 默认填文件/生效日期；若表格未填日期，则使用生成当天的新加坡日期。
 
 ### P2 M03 股份转让包
 
@@ -174,17 +176,26 @@ PDF 生成依赖 LibreOffice。云端部署建议使用 Docker 固定 LibreOffic
 
 - 年审签字文件包。
 
+当前版本：
+
+- `P2_M05_v0.3`。旧版 v0.1 内容偏摘要式；v0.2 已按原年审样本结构重建为更完整的正式年审包；v0.3 增加财报方式、休眠状态和 AGM 状态联动。
+
 当前生成 3 份 PDF：
 
-- AGM Documents Package
-- Annual Return Authorisation Package
-- Internal Annual Review Checklist
+- AGM Documents Package：普通 AGM 路线生成 Directors' Resolutions、Notice、Agenda、Shorter Notice、Proxy、Attendance Sheet、AGM Minutes；休眠/AGM 豁免/书面路线生成 Directors' Resolutions + Members' Written Resolution / Consent。
+- Annual Return Authorisation Package：Annual Return Review Summary、Section 197 Certificate、动态审计/休眠/小公司声明、AR Authorisation、Management Representation 或 Dormant Company Representation。
+- Internal Annual Review Checklist。
 
 关键业务逻辑：
 
 - M05 是年审签字/授权文件包，不是 ACRA 已申报完成证明。
 - FYE、AGM 日期、董事签字人、成员签字人、AR 签字人从 V7 快速年审字段读取。
 - 财报、审计豁免、AR filing 内容仍需要人工复核。
+- 最新普通年审测试表：`outputs/M05_annual_review_stress_input_v03.xlsx`
+- 最新休眠年审测试表：`outputs/M05_dormant_annual_review_input.xlsx`
+- 最新审计年审测试表：`outputs/M05_audited_annual_review_input.xlsx`
+- 最新网页测试生成包：`app/generated/JOB-20260608-035209-85A0_P2_M05_pdf_package.zip`
+- 最新网页休眠测试生成包：`app/generated/JOB-20260608-035402-96DA_P2_M05_pdf_package.zip`
 
 ## 正式导入表
 

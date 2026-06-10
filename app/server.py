@@ -6,6 +6,8 @@ import os
 import secrets
 import shutil
 import sys
+import threading
+import traceback
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -173,7 +175,7 @@ DOCUMENT_TEMPLATES = {
     "p2_m02_resolution_package": {
         "category": "变更 P2",
         "name": "M02 EGM Notice / Resolutions",
-        "version": "v0.2",
+        "version": "v0.3",
         "status": "启用",
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M02_resolution_package_transfer_in_standard.docx",
         "note": "Notice / Shorter Notice / Members' Resolution / Directors' Resolution，内部编号 M02",
@@ -269,23 +271,23 @@ DOCUMENT_TEMPLATES = {
     "p2_m05_agm_package": {
         "category": "年审 P2",
         "name": "M05 AGM 文件包",
-        "version": "v0.1",
+        "version": "v0.2",
         "status": "启用",
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M05_agm_documents_package_standard.docx",
-        "note": "Notice / shorter notice / attendance / AGM minutes，内部编号 M05",
+        "note": "DR + 普通 AGM 或书面年审/AGM 豁免路线，内部编号 M05",
     },
     "p2_m05_annual_return_package": {
         "category": "年审 P2",
         "name": "M05 Annual Return 授权声明包",
-        "version": "v0.1",
+        "version": "v0.3",
         "status": "启用",
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M05_annual_return_authorisation_package_standard.docx",
-        "note": "Section 197 / 205C / AR 授权 / MRL，内部编号 M05",
+        "note": "AR review / Section 197 / 动态审计或休眠声明 / AR 授权 / MRL，内部编号 M05",
     },
     "p2_m05_checklist": {
         "category": "年审 P2",
         "name": "M05 年审内部复核清单",
-        "version": "v0.1",
+        "version": "v0.3",
         "status": "启用",
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M05_annual_review_checklist_standard.docx",
         "note": "内部复核清单，内部编号 M05",
@@ -577,12 +579,13 @@ class App(BaseHTTPRequestHandler):
         blocking_errors = summary.get("blocking_errors", [])
         warnings = summary.get("warnings", [])
         info = summary.get("info", [])
-        can_generate = row["task_type"] == "incorporation" and not blocking_errors
-        can_generate_m01 = row["task_type"] == "maintenance" and not blocking_errors and summary.get("m01_available") == "Yes"
-        can_generate_m02 = row["task_type"] == "maintenance" and not blocking_errors and summary.get("m02_available") == "Yes"
-        can_generate_m03 = row["task_type"] == "maintenance" and not blocking_errors and summary.get("m03_available") == "Yes"
-        can_generate_m04 = row["task_type"] == "maintenance" and not blocking_errors and summary.get("m04_available") == "Yes"
-        can_generate_m05 = row["task_type"] == "maintenance" and not blocking_errors and summary.get("m05_available") == "Yes"
+        is_generating = is_generation_status(row["status"])
+        can_generate = row["task_type"] == "incorporation" and not blocking_errors and not is_generating
+        can_generate_m01 = row["task_type"] == "maintenance" and not blocking_errors and not is_generating and summary.get("m01_available") == "Yes"
+        can_generate_m02 = row["task_type"] == "maintenance" and not blocking_errors and not is_generating and summary.get("m02_available") == "Yes"
+        can_generate_m03 = row["task_type"] == "maintenance" and not blocking_errors and not is_generating and summary.get("m03_available") == "Yes"
+        can_generate_m04 = row["task_type"] == "maintenance" and not blocking_errors and not is_generating and summary.get("m04_available") == "Yes"
+        can_generate_m05 = row["task_type"] == "maintenance" and not blocking_errors and not is_generating and summary.get("m05_available") == "Yes"
         is_admin = user.get("role") == "admin"
 
         generated_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P1_pdf_package.zip"
@@ -622,8 +625,21 @@ class App(BaseHTTPRequestHandler):
             else ""
         )
         download_links = f"<div class='button-row'>{generated_link}{generated_m01_link}{generated_m02_link}{generated_m03_link}{generated_m04_link}{generated_m05_link}</div>" if generated_link or generated_m01_link or generated_m02_link or generated_m03_link or generated_m04_link or generated_m05_link else ""
+        generation_notice = (
+            """
+            <div class="info-box">
+              <strong>PDF 正在后台生成</strong>
+              <p>页面会自动刷新；生成完成后下载按钮会出现在这里。你也可以稍后回到任务列表打开。</p>
+            </div>
+            <script>setTimeout(() => window.location.reload(), 5000);</script>
+            """
+            if is_generating
+            else ""
+        )
         generate_control = (
-            f"""
+            "<p class='muted'>PDF 正在后台生成，请稍等。</p>"
+            if is_generating
+            else f"""
             <form method="post" action="/generate-p1">
               <input type="hidden" name="job_id" value="{h(row['id'])}">
               <button type="submit">{h(generate_button_label('P1', user))}</button>
@@ -634,7 +650,9 @@ class App(BaseHTTPRequestHandler):
             else "<p class='error'>当前存在严重错误或不是注册任务，不能生成注册文件包。</p>"
         )
         if row["task_type"] in {"change", "maintenance"}:
-            if can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05:
+            if is_generating:
+                generate_control = "<p class='muted'>PDF 正在后台生成，请稍等。</p>"
+            elif can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05:
                 maintenance_forms = []
                 if can_generate_m01:
                     maintenance_forms.append(
@@ -721,6 +739,7 @@ class App(BaseHTTPRequestHandler):
             </div>
             <span class="badge">{h(status_label(row['status']))}</span>
           </div>
+          {generation_notice}
           {download_links}
           {review_progress(row, summary, can_generate, can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05, bool(generated_link or generated_m01_link or generated_m02_link or generated_m03_link or generated_m04_link or generated_m05_link))}
           {alert_block("严重错误", blocking_errors, "error-box")}
@@ -1015,6 +1034,26 @@ class App(BaseHTTPRequestHandler):
         log_action(user["id"], "upload", filename)
         self.redirect(f"/job?id={job_id}")
 
+    def queue_pdf_generation(self, user_id: int, row, parsed: dict, generator, generating_status: str, done_status: str, action: str) -> None:
+        job_id = row["id"]
+        job_code = row["job_code"]
+        with connect() as conn:
+            conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", (generating_status, job_id))
+
+        def worker() -> None:
+            try:
+                generator(parsed, job_code)
+                with connect() as conn:
+                    conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", (done_status, job_id))
+                log_action(user_id, action, job_code)
+            except Exception:
+                detail = traceback.format_exc(limit=8)
+                with connect() as conn:
+                    conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("generation_failed", job_id))
+                log_action(user_id, f"{action}_failed", f"{job_code}: {detail[-1800:]}")
+
+        threading.Thread(target=worker, name=f"pdf-generation-{job_code}", daemon=True).start()
+
     def handle_generate_p1(self, user):
         fields = self.read_form_urlencoded()
         job_id = fields.get("job_id", [""])[0]
@@ -1029,11 +1068,10 @@ class App(BaseHTTPRequestHandler):
             return self.error_page(HTTPStatus.BAD_REQUEST, "当前第一阶段只支持注册 P1 文件包生成。")
         if errors:
             return self.error_page(HTTPStatus.BAD_REQUEST, "存在严重错误，请先修正 Excel 后重新上传。")
-        out_path = generate_p1_pdf_package(parsed, row["job_code"])
-        with connect() as conn:
-            conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("pdf_generated", job_id))
-        log_action(user["id"], "generate_p1_pdf_package", row["job_code"])
-        self.redirect(f"/generated/{out_path.name}")
+        if is_generation_status(row["status"]):
+            return self.redirect(f"/job?id={job_id}")
+        self.queue_pdf_generation(user["id"], row, parsed, generate_p1_pdf_package, "generating_pdf", "pdf_generated", "generate_p1_pdf_package")
+        self.redirect(f"/job?id={job_id}")
 
     def handle_generate_p2_m01(self, user):
         fields = self.read_form_urlencoded()
@@ -1051,11 +1089,10 @@ class App(BaseHTTPRequestHandler):
             return self.error_page(HTTPStatus.BAD_REQUEST, "存在严重错误，请先修正 Excel 后重新上传。")
         if suggestions.get("summary", {}).get("m01_available") != "Yes":
             return self.error_page(HTTPStatus.BAD_REQUEST, "没有识别到可生成普通董事决议的事项。")
-        out_path = generate_p2_m01_pdf_package(parsed, row["job_code"])
-        with connect() as conn:
-            conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("p2_m01_pdf_generated", job_id))
-        log_action(user["id"], "generate_p2_m01_pdf_package", row["job_code"])
-        self.redirect(f"/generated/{out_path.name}")
+        if is_generation_status(row["status"]):
+            return self.redirect(f"/job?id={job_id}")
+        self.queue_pdf_generation(user["id"], row, parsed, generate_p2_m01_pdf_package, "p2_m01_generating_pdf", "p2_m01_pdf_generated", "generate_p2_m01_pdf_package")
+        self.redirect(f"/job?id={job_id}")
 
     def handle_generate_p2_m02(self, user):
         fields = self.read_form_urlencoded()
@@ -1073,11 +1110,10 @@ class App(BaseHTTPRequestHandler):
             return self.error_page(HTTPStatus.BAD_REQUEST, "存在严重错误，请先修改 Excel 后重新上传。")
         if suggestions.get("summary", {}).get("m02_available") != "Yes":
             return self.error_page(HTTPStatus.BAD_REQUEST, "没有识别到可生成转入包的事项。")
-        out_path = generate_p2_m02_pdf_package(parsed, row["job_code"])
-        with connect() as conn:
-            conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("p2_m02_pdf_generated", job_id))
-        log_action(user["id"], "generate_p2_m02_pdf_package", row["job_code"])
-        self.redirect(f"/generated/{out_path.name}")
+        if is_generation_status(row["status"]):
+            return self.redirect(f"/job?id={job_id}")
+        self.queue_pdf_generation(user["id"], row, parsed, generate_p2_m02_pdf_package, "p2_m02_generating_pdf", "p2_m02_pdf_generated", "generate_p2_m02_pdf_package")
+        self.redirect(f"/job?id={job_id}")
 
     def handle_generate_p2_m03(self, user):
         fields = self.read_form_urlencoded()
@@ -1095,11 +1131,10 @@ class App(BaseHTTPRequestHandler):
             return self.error_page(HTTPStatus.BAD_REQUEST, "存在严重错误，请先修改 Excel 后重新上传。")
         if suggestions.get("summary", {}).get("m03_available") != "Yes":
             return self.error_page(HTTPStatus.BAD_REQUEST, "没有识别到可生成股份转让包的事项。")
-        out_path = generate_p2_m03_pdf_package(parsed, row["job_code"])
-        with connect() as conn:
-            conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("p2_m03_pdf_generated", job_id))
-        log_action(user["id"], "generate_p2_m03_pdf_package", row["job_code"])
-        self.redirect(f"/generated/{out_path.name}")
+        if is_generation_status(row["status"]):
+            return self.redirect(f"/job?id={job_id}")
+        self.queue_pdf_generation(user["id"], row, parsed, generate_p2_m03_pdf_package, "p2_m03_generating_pdf", "p2_m03_pdf_generated", "generate_p2_m03_pdf_package")
+        self.redirect(f"/job?id={job_id}")
 
     def handle_generate_p2_m04(self, user):
         fields = self.read_form_urlencoded()
@@ -1117,11 +1152,10 @@ class App(BaseHTTPRequestHandler):
             return self.error_page(HTTPStatus.BAD_REQUEST, "存在严重错误，请先修改 Excel 后重新上传。")
         if suggestions.get("summary", {}).get("m04_available") != "Yes":
             return self.error_page(HTTPStatus.BAD_REQUEST, "没有识别到可生成增资配股包的事项。")
-        out_path = generate_p2_m04_pdf_package(parsed, row["job_code"])
-        with connect() as conn:
-            conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("p2_m04_pdf_generated", job_id))
-        log_action(user["id"], "generate_p2_m04_pdf_package", row["job_code"])
-        self.redirect(f"/generated/{out_path.name}")
+        if is_generation_status(row["status"]):
+            return self.redirect(f"/job?id={job_id}")
+        self.queue_pdf_generation(user["id"], row, parsed, generate_p2_m04_pdf_package, "p2_m04_generating_pdf", "p2_m04_pdf_generated", "generate_p2_m04_pdf_package")
+        self.redirect(f"/job?id={job_id}")
 
     def handle_generate_p2_m05(self, user):
         fields = self.read_form_urlencoded()
@@ -1139,11 +1173,10 @@ class App(BaseHTTPRequestHandler):
             return self.error_page(HTTPStatus.BAD_REQUEST, "存在严重错误，请先修改 Excel 后重新上传。")
         if suggestions.get("summary", {}).get("m05_available") != "Yes":
             return self.error_page(HTTPStatus.BAD_REQUEST, "没有识别到可生成年审文件包的事项。")
-        out_path = generate_p2_m05_pdf_package(parsed, row["job_code"])
-        with connect() as conn:
-            conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("p2_m05_pdf_generated", job_id))
-        log_action(user["id"], "generate_p2_m05_pdf_package", row["job_code"])
-        self.redirect(f"/generated/{out_path.name}")
+        if is_generation_status(row["status"]):
+            return self.redirect(f"/job?id={job_id}")
+        self.queue_pdf_generation(user["id"], row, parsed, generate_p2_m05_pdf_package, "p2_m05_generating_pdf", "p2_m05_pdf_generated", "generate_p2_m05_pdf_package")
+        self.redirect(f"/job?id={job_id}")
 
     def handle_save_common_person(self, user):
         if user.get("role") != "admin":
@@ -2298,14 +2331,19 @@ def review_workflow(summary: dict[str, object], warnings: list[str], blocking_er
     """
 
 
+def is_generation_status(status: str) -> bool:
+    return status == "generating_pdf" or status.endswith("_generating_pdf")
+
+
 def review_progress(row, summary: dict[str, object], can_generate: bool, can_generate_p2: bool, has_download: bool) -> str:
     has_errors = bool(summary.get("blocking_errors"))
+    is_generating = is_generation_status(row["status"])
     can_generate_any = bool(can_generate or can_generate_p2)
     steps = [
         ("1", "上传资料表", "完成", "done"),
         ("2", "系统检查", "需修正" if has_errors else "已通过", "error" if has_errors else "done"),
-        ("3", "人工复核", "检查文件清单和签字人", "active" if not has_errors and not has_download else "done" if has_download else "pending"),
-        ("4", "生成 PDF", "可生成" if can_generate_any else "等待接入" if not has_errors else "不可生成", "active" if can_generate_any and not has_download else "done" if has_download else "pending"),
+        ("3", "人工复核", "检查文件清单和签字人", "active" if not has_errors and not has_download and not is_generating else "done" if has_download or is_generating else "pending"),
+        ("4", "生成 PDF", "生成中" if is_generating else "可生成" if can_generate_any else "等待接入" if not has_errors else "不可生成", "active" if is_generating or (can_generate_any and not has_download) else "done" if has_download else "pending"),
         ("5", "下载文件包", "已生成" if has_download else "生成后下载", "done" if has_download else "pending"),
     ]
     cards = "".join(
@@ -2324,7 +2362,13 @@ def review_progress(row, summary: dict[str, object], can_generate: bool, can_gen
 def generation_steps(row, summary: dict[str, object], can_generate: bool, can_generate_p2: bool, user: dict | None) -> str:
     task_type = row["task_type"]
     has_errors = bool(summary.get("blocking_errors"))
-    if has_errors:
+    if is_generation_status(row["status"]):
+        steps = [
+            ("1", "后台生成中", "系统正在生成 Word 和 PDF 文件包。"),
+            ("2", "页面自动刷新", "生成完成后会出现下载按钮。"),
+            ("3", "下载文件包", "如果文件较多，可能需要几十秒。"),
+        ]
+    elif has_errors:
         steps = [
             ("1", "下载或打开原 Excel", "修正严重错误对应字段。"),
             ("2", "重新上传资料表", "系统会重新检查并生成新的任务。"),
@@ -2544,6 +2588,13 @@ def status_label(status: str) -> str:
         "parsed": "已解析",
         "docx_generated": "已生成旧文件包",
         "p2_m01_generated": "已生成普通董事决议",
+        "generating_pdf": "正在生成 PDF",
+        "p2_m01_generating_pdf": "正在生成普通董事决议 PDF",
+        "p2_m02_generating_pdf": "正在生成转入文件 PDF",
+        "p2_m03_generating_pdf": "正在生成股份转让 PDF",
+        "p2_m04_generating_pdf": "正在生成增资配股 PDF",
+        "p2_m05_generating_pdf": "正在生成年审 PDF",
+        "generation_failed": "生成失败，可重试",
         "pdf_generated": "已生成 PDF 包",
         "p2_m01_pdf_generated": "已生成普通董事决议 PDF",
         "p2_m02_pdf_generated": "已生成转入文件 PDF",

@@ -5,6 +5,7 @@ import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from openpyxl import load_workbook
 
@@ -12,6 +13,7 @@ from openpyxl import load_workbook
 YES = {"yes", "y", "true", "1", "是", "有", "需要"}
 NO = {"no", "n", "false", "0", "否", "不", "无需", "不用"}
 AUTO = {"", "auto", "自动", "默认", "system", "系统"}
+SINGAPORE_TZ = ZoneInfo("Asia/Singapore")
 
 
 def clean(value: Any) -> Any:
@@ -36,6 +38,15 @@ def is_no(value: Any) -> bool:
 
 def is_auto(value: Any) -> bool:
     return str(clean(value)).strip().lower() in AUTO
+
+
+def today_document_date() -> str:
+    return datetime.now(SINGAPORE_TZ).strftime("%d/%m/%Y")
+
+
+def apply_default_document_date(company: dict[str, Any]) -> None:
+    if not clean(company.get("default_document_date")):
+        company["default_document_date"] = today_document_date()
 
 
 def read_kv_sheet(wb, sheet_name: str, value_col: str = "value") -> dict[str, Any]:
@@ -356,6 +367,7 @@ def parse_maintenance(wb, common_people: dict[str, dict[str, Any]]) -> dict[str,
     if "维护公司信息" in wb.sheetnames:
         return parse_human_maintenance(wb, common_people)
     company = read_kv_sheet(wb, "Company", "value")
+    apply_default_document_date(company)
     people = resolve_people(read_table(wb, "People"), common_people)
     shareholdings = read_table(wb, "Shareholdings")
     change_events = read_table(wb, "ChangeEvents")
@@ -415,6 +427,7 @@ PERSON_ACTIONS = {
 def parse_one_page_maintenance(wb, common_people: dict[str, dict[str, Any]]) -> dict[str, Any]:
     ws = wb["P2快速业务单"]
     fields = read_one_page_kv(ws)
+    apply_default_document_date(fields)
     annual_quick = read_vertical_kv_sheet(wb, "快速年审") if "快速年审" in wb.sheetnames else {}
     company = dict(fields)
     company.setdefault("task_type", "maintenance")
@@ -464,6 +477,14 @@ def normalize_quick_annual_review(company: dict[str, Any], fields: dict[str, Any
         "agm_place": annual_quick.get("agm_place") or company.get("registered_office_address", ""),
         "agm_route": annual_quick.get("agm_route") or fields.get("agm_route") or "ordinary_agm",
         "accounts_status": annual_quick.get("accounts_status") or "non_dormant",
+        "company_activity_status": annual_quick.get("company_activity_status") or fields.get("company_activity_status", ""),
+        "financial_statements_type": annual_quick.get("financial_statements_type") or fields.get("financial_statements_type", ""),
+        "financial_statements_required": annual_quick.get("financial_statements_required") or fields.get("financial_statements_required", ""),
+        "audit_exemption_status": annual_quick.get("audit_exemption_status") or fields.get("audit_exemption_status", ""),
+        "agm_status": annual_quick.get("agm_status") or fields.get("agm_status", ""),
+        "acra_dormant_relevant_company": annual_quick.get("acra_dormant_relevant_company") or fields.get("acra_dormant_relevant_company", ""),
+        "total_assets_under_500k": annual_quick.get("total_assets_under_500k") or fields.get("total_assets_under_500k", ""),
+        "iras_tax_status": annual_quick.get("iras_tax_status") or fields.get("iras_tax_status", ""),
         "financial_statement_date": annual_quick.get("financial_statement_date") or annual_quick.get("fye_date") or fields.get("fye_date", ""),
         "financial_year_start": annual_quick.get("financial_year_start") or "",
         "director_signer_name": annual_quick.get("director_signer_name") or company.get("director_signer_name", ""),
@@ -618,6 +639,7 @@ def parse_quick_maintenance(wb, common_people: dict[str, dict[str, Any]]) -> dic
     company = read_vertical_kv_sheet(wb, "P2公司信息")
     company.setdefault("task_type", "maintenance")
     company.setdefault("template_version", "p2_v5")
+    apply_default_document_date(company)
 
     task_rows = read_keyed_table(wb, "办理事项")
     task_flags = {str(row.get("task_key") or "").strip(): row for row in task_rows if row.get("task_key")}
@@ -839,6 +861,7 @@ def normalize_quick_rows(rows: list[dict[str, Any]], company: dict[str, Any]) ->
 def parse_human_maintenance(wb, common_people: dict[str, dict[str, Any]]) -> dict[str, Any]:
     company = read_vertical_kv_sheet(wb, "维护公司信息")
     company.setdefault("task_type", "maintenance")
+    apply_default_document_date(company)
     shareholdings = read_transposed_table(wb, "股东现状")
     people = resolve_people(normalize_human_maintenance_people(read_transposed_table(wb, "人员信息"), company), common_people)
     apply_human_maintenance_role_defaults(people, shareholdings)
@@ -917,14 +940,48 @@ def parse_unknown(wb) -> dict[str, Any]:
     }
 
 
+def normalized_common_person_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(clean(value)).lower())
+
+
+def find_common_person(row: dict[str, Any], common_people: dict[str, dict[str, Any]]) -> tuple[str, dict[str, Any]] | tuple[str, None]:
+    candidates = [
+        row.get("common_person_name"),
+        row.get("full_name"),
+    ]
+    for candidate in candidates:
+        name = str(clean(candidate))
+        if name in common_people:
+            return name, common_people[name]
+
+    lower_lookup = {str(name).strip().lower(): name for name in common_people}
+    for candidate in candidates:
+        key = str(clean(candidate)).lower()
+        if key in lower_lookup:
+            matched_name = lower_lookup[key]
+            return matched_name, common_people[matched_name]
+
+    normalized_lookup = {
+        normalized_common_person_key(name): name
+        for name in common_people
+        if normalized_common_person_key(name)
+    }
+    for candidate in candidates:
+        key = normalized_common_person_key(candidate)
+        if key in normalized_lookup:
+            matched_name = normalized_lookup[key]
+            return matched_name, common_people[matched_name]
+    return "", None
+
+
 def resolve_people(rows: list[dict[str, Any]], common_people: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     resolved = []
     for row in rows:
-        source = str(row.get("source", "")).lower()
-        name = str(row.get("common_person_name", "")).strip()
+        source = str(clean(row.get("source"))).lower()
         item = dict(row)
-        if source == "common" and name in common_people:
-            common = common_people[name]
+        name, common = find_common_person(item, common_people) if source == "common" else ("", None)
+        if common:
+            item["common_person_name"] = item.get("common_person_name") or name
             for key in ["full_name", "id_type", "id_number", "nationality", "residential_address", "email", "phone"]:
                 item[key] = item.get(key) or common.get(key) or ""
             if not is_no(item.get("is_director")) and common.get("is_local_resident_director") and is_auto(item.get("is_local_resident_director")):

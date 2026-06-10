@@ -20,7 +20,7 @@ For the latest default-value and staff-flow regression notes, also read `DEFAULT
 - P2 M02: transfer-in package.
 - P2 M03: share transfer package.
 - P2 M04: share allotment package.
-- P2 M05: annual review package.
+- P2 M05: annual review package upgraded to v0.3. It includes ordinary AGM routing, dormant/no-financial-statements routing, audited accounts wording, AGM exempt/dispensed/written-resolution routing, Annual Return review, Section 197 certificate, dynamic audit/dormant/audited statement, AR authorisation, MRL/dormant representation, and an internal checklist.
 - Default-value regression fixtures now cover P1 and P2 M01-M05 with sparse input.
 
 ## Important directories
@@ -53,7 +53,7 @@ The document wording is for internal workflow support and should still be review
 
 ## Suggested next work
 
-- Review M05 annual-review wording with real business users.
+- Review M05 v0.3 annual-review wording with real business users, especially dormant/no-FS and audited accounts routes; it still should receive corporate-secretary/legal review before production use.
 - Unify the website entry flow for M01-M05.
 - Add cleaner admin template version management.
 - Prepare a production database model for contacts, persons, companies, roles, and document snapshots.

@@ -18,8 +18,8 @@
 - P2 M02 转入包：已接入两份签字 PDF 生成。
 - P2 M03 股份转让包：已接入 PDF 生成。
 - P2 M04 增资配股包：已接入 PDF 生成。
-- P2 其他文件组：年审先保留判断和预览逻辑，后续接入模板。
-- 年审：v7 表格已预留快速年审页，正式文件模板仍待下一阶段接入。
+- P2 M05 年审包：已接入 v0.3 PDF 生成，包含 AGM / 书面年审文件包、Annual Return 授权声明包和内部复核清单。
+- 年审：v7 表格的快速年审页为主入口，支持留空默认值、多董事/多成员签字人、休眠公司、审计财报和 AGM 豁免/书面决议路线。
 
 ## 当前正式导入表
 
@@ -29,6 +29,8 @@
 - P2/M01 示例表：`outputs/AI适配_公司维护变更年审资料模板_v7_一页式快速业务单含快速年审_示例.xlsx`
 
 网站普通用户首页只显示以上正式导入表。管理员后台默认也只显示这些入口；旧版、测试和辅助入口需要点“显示旧版 / 测试 / 辅助入口”才会展开。
+
+P2 维护/变更表的 `default_document_date` 可留空，系统会默认使用生成当天的新加坡日期；人员任免、转入等事项的生效日期留空时也会沿用这个日期。M02 签字栏 Date 默认填文件/生效日期。
 
 ## 当前正式文件模板
 
@@ -46,6 +48,9 @@
 - M04 股权证书模板：`app/doc_templates/p2_standard_v1/M04_share_certificate_standard.docx`
 - M04 Form 24 模板：`app/doc_templates/p2_standard_v1/M04_return_of_allotment_form24_standard.docx`
 - M04 内部复核清单模板：`app/doc_templates/p2_standard_v1/M04_register_update_checklist_standard.docx`
+- M05 AGM 文件包模板：`app/doc_templates/p2_standard_v1/M05_agm_documents_package_standard.docx`
+- M05 Annual Return 授权声明包模板：`app/doc_templates/p2_standard_v1/M05_annual_return_authorisation_package_standard.docx`
+- M05 年审内部复核清单模板：`app/doc_templates/p2_standard_v1/M05_annual_review_checklist_standard.docx`
 
 P1 已包含 First DR、Form 45、Form 45B、Share Certificate、Secretary Agreement、Nominee Director Agreement、Form 24、RORC。
 

@@ -78,6 +78,14 @@ ANNUAL_FIELDS = [
     ("AGM 地点", "AGM place", "agm_place", "", "默认注册地址", "留空默认当前注册地址。"),
     ("年审方式", "AGM route", "agm_route", "ordinary_agm", "默认", "ordinary_agm / exempt_private_company / dormant_company / manual。"),
     ("财报状态", "Accounts status", "accounts_status", "non_dormant", "常用", "non_dormant / dormant / unaudited / audited。"),
+    ("公司活动状态", "Company activity status", "company_activity_status", "Active", "默认", "Active / Dormant；留空按 Active。"),
+    ("是否 ACRA 休眠相关公司", "ACRA dormant relevant company", "acra_dormant_relevant_company", "Auto", "默认 Auto", "Auto / Yes / No；休眠公司会影响是否需要财报。"),
+    ("资产是否不超过 50 万", "Total assets under S$500k", "total_assets_under_500k", "Auto", "默认 Auto", "Auto / Yes / No；用于判断 dormant AGM exemption 风险。"),
+    ("是否需要财报", "Financial statements required", "financial_statements_required", "Auto", "默认 Auto", "Auto / Yes / No；休眠且符合条件时可 No。"),
+    ("财报类型", "Financial statements type", "financial_statements_type", "Auto", "默认 Auto", "Auto / Unaudited / Audited / Dormant no FS / Management accounts。"),
+    ("审计/豁免状态", "Audit exemption status", "audit_exemption_status", "Auto", "默认 Auto", "Auto / Small company exempt / Audited / Dormant relevant / Manual review。"),
+    ("AGM 状态", "AGM status", "agm_status", "Auto", "默认 Auto", "Auto / Held AGM / Dispensed with AGM / Exempt from AGM / Written resolutions。"),
+    ("IRAS 税务状态", "IRAS tax status", "iras_tax_status", "Auto", "可空", "Auto / Active / Dormant / Dormant waiver granted / Manual review；只作复核提醒。"),
     ("财报日期", "Financial statement date", "financial_statement_date", "", "默认 FYE", "留空默认财年结束日。"),
     ("董事签字人", "Director signer", "director_signer_name", "", "常用", "留空默认首页董事签字人。"),
     ("股东/成员签字人", "Shareholder signer", "shareholder_signer_name", "", "可空", "需要股东签署的年审文件使用。"),
@@ -430,6 +438,12 @@ def build_annual_sheet(wb: Workbook, sample: bool) -> None:
         "annual_review_required": "Yes",
         "fye_date": "31/12/2025",
         "agm_date": "30/06/2026",
+        "accounts_status": "unaudited",
+        "company_activity_status": "Active",
+        "financial_statements_type": "Unaudited",
+        "financial_statements_required": "Yes",
+        "audit_exemption_status": "Small company exempt",
+        "agm_status": "Held AGM",
         "director_signer_name": "ZHANG YI",
         "ar_authorized_signer_name": "ZHANG YI",
     } if sample else {}
@@ -452,10 +466,19 @@ def build_annual_sheet(wb: Workbook, sample: bool) -> None:
         cell.fill = HEADER_FILL
         cell.font = WHITE_BOLD
         cell.alignment = WRAP
-    add_validation(ws, "D4:D4", YES_NO)
-    add_validation(ws, "D9:D9", '"ordinary_agm,exempt_private_company,dormant_company,manual"')
-    add_validation(ws, "D10:D10", '"non_dormant,dormant,unaudited,audited"')
-    add_validation(ws, "D17:D18", '"Auto,Yes,No"')
+    add_kv_validation(ws, "annual_review_required", YES_NO)
+    add_kv_validation(ws, "agm_route", '"ordinary_agm,exempt_private_company,dormant_company,written_resolutions,manual"')
+    add_kv_validation(ws, "accounts_status", '"non_dormant,dormant,unaudited,audited,manual"')
+    add_kv_validation(ws, "company_activity_status", '"Active,Dormant"')
+    add_kv_validation(ws, "acra_dormant_relevant_company", YES_NO)
+    add_kv_validation(ws, "total_assets_under_500k", YES_NO)
+    add_kv_validation(ws, "financial_statements_required", YES_NO)
+    add_kv_validation(ws, "financial_statements_type", '"Auto,Unaudited,Audited,Dormant no FS,Management accounts,Not applicable"')
+    add_kv_validation(ws, "audit_exemption_status", '"Auto,Small company exempt,Audited,Dormant relevant,Manual review"')
+    add_kv_validation(ws, "agm_status", '"Auto,Held AGM,Dispensed with AGM,Exempt from AGM,Written resolutions,Manual review"')
+    add_kv_validation(ws, "iras_tax_status", '"Auto,Active,Dormant,Dormant waiver granted,Manual review"')
+    add_kv_validation(ws, "shorter_notice_consent", YES_NO)
+    add_kv_validation(ws, "management_rep_letter", YES_NO)
     ws.freeze_panes = "A4"
     set_widths(ws)
 

@@ -27,7 +27,7 @@ M01_VERSION = "P2_M01_v0.1"
 M02_VERSION = "P2_M02_v0.2"
 M03_VERSION = "P2_M03_v0.1"
 M04_VERSION = "P2_M04_v0.1"
-M05_VERSION = "P2_M05_v0.1"
+M05_VERSION = "P2_M05_v0.3"
 M02_TEMPLATE_NAMES = {
     "resolution_package": "M02_resolution_package_transfer_in_standard.docx",
     "handover_resignation_package": "M02_handover_and_resignation_package_standard.docx",
@@ -648,6 +648,9 @@ def generate_p2_m05_package(parsed: dict[str, Any], job_code: str) -> Path:
                 "generated_files": generated,
                 "fye_date": context["m05"].get("fye_date", ""),
                 "agm_date": context["m05"].get("agm_date", ""),
+                "accounts_status": context["m05"].get("accounts_status_label", ""),
+                "agm_mode": context["m05"].get("agm_mode_label", ""),
+                "financial_statements_required": "No" if context["m05"].get("no_financial_statements_required") else "Yes",
                 "director_signers": [row.get("full_name", "") for row in context["m05"].get("director_signers", [])],
                 "member_signers": [row.get("full_name", "") for row in context["m05"].get("member_signers", [])],
                 "manual_review_flags": context["m05"].get("manual_review_flags", []),
@@ -938,10 +941,10 @@ def build_m02_context(parsed: dict[str, Any]) -> dict[str, Any]:
         "personnel_change_lines": [row.get("summary", "") for row in personnel_changes if row.get("summary")],
         "personnel_change_summary": personnel_change_summary_for_m02(personnel_changes),
         "resigning_persons": resignation_people,
-        "member_signature_blocks": signature_blocks(member_signers, "Member / Authorised Signatory"),
-        "director_signature_blocks": signature_blocks(director_signers, "Director"),
-        "client_signature_block": signature_block(client_signatory, "Authorised Signatory"),
-        "notice_issuer_signature_block": signature_block(notice_issuer, "Director / Authorised Signatory"),
+        "member_signature_blocks": signature_blocks(member_signers, "Member / Authorised Signatory", effective_date_raw),
+        "director_signature_blocks": signature_blocks(director_signers, "Director", effective_date_raw),
+        "client_signature_block": signature_block(client_signatory, "Authorised Signatory", effective_date_raw),
+        "notice_issuer_signature_block": signature_block(notice_issuer, "Director / Authorised Signatory", effective_date_raw),
         "handover_request_items": handover_request_items(),
     }
     return {
@@ -1268,19 +1271,20 @@ def resignation_persons_for_m02(
     return dedupe_signers(resigning)
 
 
-def signature_blocks(signers: list[dict[str, Any]], default_capacity: str) -> str:
-    return "\n\n".join(signature_block(signer, default_capacity) for signer in signers) or signature_block({}, default_capacity)
+def signature_blocks(signers: list[dict[str, Any]], default_capacity: str, signature_date: Any = "") -> str:
+    return "\n\n".join(signature_block(signer, default_capacity, signature_date) for signer in signers) or signature_block({}, default_capacity, signature_date)
 
 
-def signature_block(signer: dict[str, Any], default_capacity: str) -> str:
+def signature_block(signer: dict[str, Any], default_capacity: str, signature_date: Any = "") -> str:
     name = clean(signer.get("full_name"))
     capacity = clean(signer.get("capacity")) or default_capacity
+    date_line = date_text(signature_date) if clean(signature_date) else "______________________________"
     return "\n".join(
         [
             "Signature: ______________________________",
             f"Name: {name}",
             f"Capacity: {capacity}",
-            "Date: ______________________________",
+            f"Date: {date_line}",
         ]
     )
 
@@ -1852,7 +1856,7 @@ def normalize_m05_annual(raw: dict[str, Any], company: dict[str, Any]) -> dict[s
     agm_place = clean(annual.get("agm_place") or company.get("registered_office_address"))
     agm_time = clean(annual.get("agm_time") or "10.00 a.m.")
     currency = clean(company.get("currency") or "SGD")
-    return {
+    normalized = {
         "annual_review_required": clean(annual.get("annual_review_required") or company.get("annual_review_required")),
         "fye_date_raw": fye_raw,
         "fye_date": date_text(fye_raw),
@@ -1871,7 +1875,15 @@ def normalize_m05_annual(raw: dict[str, Any], company: dict[str, Any]) -> dict[s
         "agm_time": agm_time,
         "agm_place": agm_place,
         "agm_route": clean(annual.get("agm_route") or "ordinary_agm"),
+        "company_activity_status": clean(annual.get("company_activity_status") or annual.get("activity_status") or ""),
         "accounts_status": clean(annual.get("accounts_status") or "non_dormant"),
+        "financial_statements_type": clean(annual.get("financial_statements_type") or annual.get("financial_statement_type") or ""),
+        "financial_statements_required": clean(annual.get("financial_statements_required") or ""),
+        "audit_exemption_status": clean(annual.get("audit_exemption_status") or ""),
+        "agm_status": clean(annual.get("agm_status") or ""),
+        "acra_dormant_relevant_company": clean(annual.get("acra_dormant_relevant_company") or annual.get("dormant_relevant_company") or ""),
+        "total_assets_under_500k": clean(annual.get("total_assets_under_500k") or annual.get("assets_under_500k") or ""),
+        "iras_tax_status": clean(annual.get("iras_tax_status") or ""),
         "ar_as_at_date_raw": ar_as_at_raw,
         "ar_as_at_date": date_text(ar_as_at_raw),
         "director_signer_name": clean(annual.get("director_signer_name") or annual.get("director_signer_names")),
@@ -1884,6 +1896,246 @@ def normalize_m05_annual(raw: dict[str, Any], company: dict[str, Any]) -> dict[s
         "shorter_notice_consent": clean(annual.get("shorter_notice_consent") or "Auto"),
         "management_rep_letter": clean(annual.get("management_rep_letter") or "Yes"),
         "remarks": clean(annual.get("remarks")),
+    }
+    normalized.update(m05_status_profile(normalized))
+    return normalized
+
+
+def m05_status_option(value: Any) -> str:
+    return clean(value).lower().replace("-", "_").replace("/", "_").replace(" ", "_")
+
+
+def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
+    activity = m05_status_option(annual.get("company_activity_status"))
+    accounts = m05_status_option(annual.get("accounts_status"))
+    fs_type = m05_status_option(annual.get("financial_statements_type"))
+    fs_required = m05_status_option(annual.get("financial_statements_required"))
+    audit_status = m05_status_option(annual.get("audit_exemption_status"))
+    agm_status = m05_status_option(annual.get("agm_status"))
+    agm_route = m05_status_option(annual.get("agm_route"))
+    dormant_relevant = m05_status_option(annual.get("acra_dormant_relevant_company"))
+    assets_under_500k = m05_status_option(annual.get("total_assets_under_500k"))
+
+    is_dormant = any(
+        "dormant" in value
+        for value in [activity, accounts, fs_type, audit_status, agm_status, agm_route, dormant_relevant]
+        if value
+    )
+    audited_values = {"audited", "audit_required", "audited_accounts", "audited_financial_statements"}
+    is_audited = any(value in audited_values for value in [accounts, fs_type, audit_status] if value)
+    no_fs_required = (
+        fs_required in {"no", "not_required", "not_applicable", "n_a"}
+        or fs_type in {"dormant_no_fs", "no_fs", "no_financial_statements", "not_applicable", "n_a"}
+        or (is_dormant and dormant_relevant in {"yes", "auto", ""})
+    )
+    if fs_required in {"yes", "required"}:
+        no_fs_required = False
+
+    agm_no_meeting_statuses = {
+        "dispensed_with_agm",
+        "dispensed",
+        "exempt_from_agm",
+        "agm_exempt",
+        "exempt_private_company",
+        "written_resolution",
+        "written_resolutions",
+        "dormant_company",
+        "no_agm",
+    }
+    explicit_agm_held = agm_status in {"held_agm", "ordinary_agm", "agm_held"} or agm_route in {"ordinary_agm", "held_agm"}
+    no_agm_meeting = agm_status in agm_no_meeting_statuses or agm_route in agm_no_meeting_statuses
+    if is_dormant and agm_status in {"", "auto"}:
+        no_agm_meeting = True
+        explicit_agm_held = False
+    use_agm_meeting_documents = explicit_agm_held and not no_agm_meeting
+    use_written_annual_review_documents = not use_agm_meeting_documents
+
+    if is_dormant:
+        accounts_label = "Dormant / no financial statements route" if no_fs_required else "Dormant / financial statements review required"
+    elif is_audited:
+        accounts_label = "Audited financial statements"
+    else:
+        accounts_label = "Unaudited / small company audit exemption"
+
+    if no_fs_required:
+        financial_statement_display = "Not applicable - dormant / no financial statements route"
+    else:
+        financial_statement_display = annual.get("financial_statement_date") or annual.get("fye_date")
+    fye_upper = annual.get("fye_date_upper") or annual.get("fye_date") or ""
+    agm_date = annual.get("agm_date") or ""
+    agm_time = annual.get("agm_time") or ""
+    agm_place = annual.get("agm_place") or ""
+    financial_period = annual.get("financial_period_text") or fye_upper
+
+    if is_dormant and no_fs_required:
+        board_accounts_title = "Dormant Status and Annual Return"
+        board_accounts_resolution_1 = (
+            "RESOLVED - That the directors note, based on the information provided and subject to final review, "
+            "that the Company is dormant for the relevant financial year and is proceeding on the basis that financial statements are not required to be prepared for that year."
+        )
+        board_accounts_resolution_2 = (
+            "RESOLVED - That any director of the Company be authorised to confirm the Company's dormant status, statutory records and Annual Return particulars "
+            "for the purpose of the Annual Return and related declarations."
+        )
+        agm_accounts_business = f"To note the Company's dormant status and the basis on which no financial statements are required for the financial year ended {fye_upper}."
+        minutes_accounts_title = "Dormant Status"
+        minutes_accounts_resolution = (
+            f"RESOLVED - That the Company's dormant status for the financial year ended {fye_upper} be and is hereby noted, "
+            "and that the Annual Return particulars be reviewed and approved for filing support."
+        )
+        audit_title = "Dormant Company / No Financial Statements Statement"
+        audit_intro = "I/We, the undermentioned director(s) of the Company, hereby state and declare that:"
+        audit_a = (
+            "a) based on the information provided, the Company was dormant for the relevant financial year and is proceeding on the basis "
+            "that it is not required to prepare financial statements for that year;"
+        )
+        audit_b = "b) the Company has not carried on business or had accounting transactions requiring full financial statements for the relevant year, subject to final review;"
+        audit_c = "c) the accounting and statutory records required to be kept by the Company have been maintained or reviewed for Annual Return purposes; and"
+        audit_d = "d) the directors remain responsible for confirming the Company's dormant status and any applicable statutory exemption before the Annual Return is lodged."
+        mrl_title = "DORMANT COMPANY REPRESENTATION"
+        mrl_intro = f"We confirm, to the best of our knowledge and belief, the following matters for the financial period ended {fye_upper}:"
+        mrl_lines = [
+            "1. The Company was dormant for the relevant financial year, subject to final review against its accounting records and bank activity.",
+            "2. No business activity, income-generating transaction or material accounting transaction has been identified for the relevant year, except as disclosed to the preparer.",
+            "3. The Company's statutory records, registers and accounting records have been maintained or made available for Annual Return review.",
+            "4. The directors have reviewed whether the Company qualifies for the applicable dormant company / no financial statements route.",
+            "5. The Company has no undisclosed assets, liabilities, contingent liabilities, guarantees, commitments or subsequent events requiring disclosure.",
+            "6. The Annual Return information and supporting particulars provided for filing are complete and accurate to the best of our knowledge.",
+            "7. The directors understand that ACRA and IRAS dormant status should be reviewed separately where applicable.",
+        ]
+    elif is_audited:
+        board_accounts_title = "Audited Financial Statements"
+        board_accounts_resolution_1 = (
+            f"RESOLVED - That the audited financial statements of the Company for the financial year ended {fye_upper}, together with the auditor's report, "
+            "be and are hereby approved for submission to the members of the Company."
+        )
+        board_accounts_resolution_2 = (
+            "RESOLVED - That any director of the Company be authorised to make such amendments to the audited financial statements and related reports "
+            "as may be necessary or desirable, provided that such amendments are not inconsistent with the records approved by the Board."
+        )
+        agm_accounts_business = f"To receive and consider the audited financial statements of the Company and the auditor's report for the financial year ended {fye_upper}."
+        minutes_accounts_title = "Audited Financial Statements"
+        minutes_accounts_resolution = (
+            f"RESOLVED - That the audited financial statements of the Company for the financial year ended {fye_upper}, together with the auditor's report, "
+            "be and are hereby received and adopted."
+        )
+        audit_title = "AUDITED ACCOUNTS REVIEW STATEMENT"
+        audit_intro = "I/We, the undermentioned director(s) of the Company, hereby state and confirm that:"
+        audit_a = "a) the Company is proceeding on the basis that audited financial statements are required or have been prepared for the relevant financial year;"
+        audit_b = "b) the audit exemption statement under Section 205C should not be used unless the Company separately qualifies for audit exemption;"
+        audit_c = "c) the auditor's report, financial statements and Annual Return particulars should be checked against the Company's records before filing; and"
+        audit_d = "d) any auditor appointment, re-appointment or resignation matter should be reviewed separately where applicable."
+        mrl_title = "MANAGEMENT REPRESENTATION"
+        mrl_intro = f"We confirm, to the best of our knowledge and belief, the following matters for the financial period ended {fye_upper}:"
+        mrl_lines = [
+            "1. The financial statements and supporting schedules have been prepared from the Company's accounting records and information provided to the preparer and/or auditor.",
+            "2. All assets, liabilities, contingent liabilities, guarantees, commitments and material transactions have been recorded or disclosed.",
+            "3. The accounting and other records required to be kept by the Company under the Companies Act 1967 have been maintained.",
+            "4. Auditor-related information and any audit report should be checked before the Annual Return is lodged.",
+            "5. There have been no subsequent events requiring adjustment or disclosure in the financial statements, except as already disclosed.",
+            "6. The Company is able to meet its liabilities as and when they fall due, unless otherwise disclosed to the directors and preparer.",
+            "7. The Annual Return information and supporting particulars provided for filing are complete and accurate to the best of our knowledge.",
+        ]
+    else:
+        board_accounts_title = "Report of the Directors and Financial Statements"
+        board_accounts_resolution_1 = (
+            "RESOLVED - That the report of the directors and the financial statements of the Company for the financial year ended "
+            f"{fye_upper} be and are hereby approved and signed for submission to the members of the Company."
+        )
+        board_accounts_resolution_2 = (
+            "RESOLVED - That any director of the Company be authorised to make such amendments to the report of the directors and financial statements "
+            "as may be necessary or desirable, provided that such amendments are not inconsistent with the records approved by the Board."
+        )
+        agm_accounts_business = f"To receive and consider the report of the directors and the financial statements of the Company for the financial year ended {fye_upper}."
+        minutes_accounts_title = "Report of the Directors and Financial Statements"
+        minutes_accounts_resolution = (
+            "RESOLVED - That the report of the directors and the financial statements of the Company for the financial year ended "
+            f"{fye_upper} be and are hereby received and adopted."
+        )
+        audit_title = "STATEMENT BY A SMALL COMPANY EXEMPT FROM AUDIT REQUIREMENTS"
+        audit_intro = "I/We, the undermentioned director(s) of the Company, hereby state and declare that:"
+        audit_a = (
+            f"a) for the financial period {financial_period}, the Company qualifies, or is expected to qualify based on the information "
+            "provided, as a small company under Section 205C of the Companies Act 1967 read with the Thirteenth Schedule;"
+        )
+        audit_b = "b) no notice has been received from any member requiring the Company to obtain an audit of its financial statements for the said financial year;"
+        audit_c = "c) the accounting and other records required to be kept by the Company under Section 199 of the Companies Act 1967 have been kept; and"
+        audit_d = "d) this statement is made for the purpose of the Annual Return and any related declaration required under the Companies Act 1967."
+        mrl_title = "MANAGEMENT REPRESENTATION"
+        mrl_intro = f"We confirm, to the best of our knowledge and belief, the following matters for the financial period ended {fye_upper}:"
+        mrl_lines = [
+            "1. The financial statements have been prepared from the Company's accounting records and information provided to the preparer.",
+            "2. All assets, liabilities, contingent liabilities, guarantees, commitments and material transactions have been recorded or disclosed.",
+            "3. The accounting and other records required to be kept by the Company under the Companies Act 1967 have been maintained.",
+            "4. No notice has been received from any member requiring the Company to obtain an audit of its financial statements for the relevant year.",
+            "5. There have been no subsequent events requiring adjustment or disclosure in the financial statements, except as already disclosed.",
+            "6. The Company is able to meet its liabilities as and when they fall due, unless otherwise disclosed to the directors and preparer.",
+            "7. The Annual Return information and supporting particulars provided for filing are complete and accurate to the best of our knowledge.",
+        ]
+
+    if use_agm_meeting_documents:
+        agm_mode_label = "AGM held / ordinary AGM route"
+        board_meeting_resolution = (
+            f"RESOLVED - That an Annual General Meeting of the Company be convened and held on {agm_date} at {agm_time} "
+            f"at {agm_place}, or at such other place, date and time as may be agreed by the directors and members."
+        )
+        board_documents_resolution = (
+            "RESOLVED - That the notice of Annual General Meeting, agenda, agreement to shorter notice, proxy form, attendance sheet and minutes "
+            "prepared in connection with the Annual General Meeting be and are hereby approved."
+        )
+    else:
+        agm_mode_label = "AGM exempt / dispensed / written annual review route"
+        board_meeting_resolution = (
+            "RESOLVED - That, subject to the Company satisfying the applicable statutory requirements and member approvals, the annual review matters "
+            "may be dealt with by written resolutions, member consent or the applicable AGM exemption route instead of a physical Annual General Meeting."
+        )
+        board_documents_resolution = (
+            "RESOLVED - That the written annual review resolutions, member consent, Annual Return authorisation and related declarations prepared for the Company "
+            "be and are hereby approved."
+        )
+
+    written_resolution_title = "MEMBERS' WRITTEN RESOLUTION / CONSENT"
+    written_resolution_body = (
+        f"The undersigned member(s) of the Company confirm that the annual review matters for the financial year ended {fye_upper} "
+        "may be dealt with by written resolution, member consent or the applicable AGM exemption route, subject to final statutory review."
+    )
+    written_resolution_accounts = minutes_accounts_resolution.replace("RESOLVED - ", "")
+
+    return {
+        "is_dormant": is_dormant,
+        "is_audited": is_audited,
+        "no_financial_statements_required": no_fs_required,
+        "use_agm_meeting_documents": use_agm_meeting_documents,
+        "use_written_annual_review_documents": use_written_annual_review_documents,
+        "accounts_status_label": accounts_label,
+        "financial_statement_date_display": financial_statement_display,
+        "agm_mode_label": agm_mode_label,
+        "board_accounts_title": board_accounts_title,
+        "board_accounts_resolution_1": board_accounts_resolution_1,
+        "board_accounts_resolution_2": board_accounts_resolution_2,
+        "board_meeting_resolution": board_meeting_resolution,
+        "board_documents_resolution": board_documents_resolution,
+        "agm_accounts_business": agm_accounts_business,
+        "minutes_accounts_title": minutes_accounts_title,
+        "minutes_accounts_resolution": minutes_accounts_resolution,
+        "audit_statement_title": audit_title,
+        "audit_statement_intro": audit_intro,
+        "audit_statement_a": audit_a,
+        "audit_statement_b": audit_b,
+        "audit_statement_c": audit_c,
+        "audit_statement_d": audit_d,
+        "management_representation_title": mrl_title,
+        "management_representation_intro": mrl_intro,
+        "management_representation_1": mrl_lines[0],
+        "management_representation_2": mrl_lines[1],
+        "management_representation_3": mrl_lines[2],
+        "management_representation_4": mrl_lines[3],
+        "management_representation_5": mrl_lines[4],
+        "management_representation_6": mrl_lines[5],
+        "management_representation_7": mrl_lines[6],
+        "written_resolution_title": written_resolution_title,
+        "written_resolution_body": written_resolution_body,
+        "written_resolution_accounts": written_resolution_accounts,
     }
 
 
@@ -1962,18 +2214,28 @@ def m05_manual_review_flags(annual: dict[str, Any], company: dict[str, Any], dir
         flags.append("Director signer is blank.")
     if not member_signers or not clean(member_signers[0].get("full_name")):
         flags.append("Member/shareholder signer is blank.")
-    if clean(annual.get("accounts_status")).lower() in {"audited", "manual"}:
-        flags.append("Accounts status is audited/manual; annual review wording should be checked.")
+    if annual.get("is_dormant"):
+        flags.append("Dormant company route selected; confirm ACRA dormant relevant company status and IRAS dormant/tax waiver status separately.")
+        if m05_status_option(annual.get("total_assets_under_500k")) not in {"yes", "auto"}:
+            flags.append("Dormant AGM exemption may depend on asset threshold; confirm whether total assets are not more than S$500,000.")
+    if annual.get("is_audited"):
+        flags.append("Audited accounts route selected; check auditor information and do not use the small company audit exemption statement unless separately confirmed.")
+    if clean(annual.get("audit_exemption_status")) and m05_status_option(annual.get("audit_exemption_status")) in {"manual", "manual_review"}:
+        flags.append("Audit exemption status is marked manual review.")
+    if clean(annual.get("agm_status")) and m05_status_option(annual.get("agm_status")) in {"manual", "manual_review"}:
+        flags.append("AGM status is marked manual review.")
     return dedupe_text(flags)
 
 
 def m05_checklist_items(annual: dict[str, Any], flags: list[str]) -> list[dict[str, Any]]:
     items = [
-        {"item": "FYE and financial statements", "status": "Review", "note": f"FYE: {annual.get('fye_date') or '-'}; financial statement date: {annual.get('financial_statement_date') or '-'}."},
-        {"item": "AGM documents", "status": "Prepare / sign", "note": f"AGM date/time: {annual.get('agm_date') or '-'} at {annual.get('agm_time') or '-'}."},
-        {"item": "Shorter notice consent", "status": "Prepare / sign", "note": "Generated as part of the AGM package unless future settings disable it."},
+        {"item": "FYE and financial statements", "status": "Review", "note": f"FYE: {annual.get('fye_date') or '-'}; financial statements: {annual.get('financial_statement_date_display') or '-'}."},
+        {"item": "Accounts / activity status", "status": "Review", "note": annual.get("accounts_status_label") or annual.get("accounts_status") or "-"},
+        {"item": "AGM route", "status": "Review", "note": annual.get("agm_mode_label") or annual.get("agm_route") or "-"},
+        {"item": "AGM documents", "status": "Prepare / sign", "note": f"AGM date/time: {annual.get('agm_date') or '-'} at {annual.get('agm_time') or '-'}." if annual.get("use_agm_meeting_documents") else "AGM meeting documents are replaced by written annual review / member consent route."},
+        {"item": "Shorter notice consent", "status": "Prepare / sign" if annual.get("use_agm_meeting_documents") else "Not applicable / review", "note": "Generated as part of the AGM package." if annual.get("use_agm_meeting_documents") else "Not generated when AGM is exempt, dispensed or replaced by written annual review route."},
         {"item": "Annual Return authorisation", "status": "Prepare / sign", "note": "Authorises preparation/lodgement support; final ACRA / BizFile filing requires manual review."},
-        {"item": "Audit exemption / small company statement", "status": "Review", "note": "Confirm small company / exempt private company status against financial statements and statutory records."},
+        {"item": "Audit / dormant statement", "status": "Review", "note": annual.get("audit_statement_title") or "Confirm audit exemption / dormant route against statutory records."},
         {"item": "Management representation", "status": "Prepare / sign", "note": f"Setting: {annual.get('management_rep_letter') or 'Yes'}."},
     ]
     for flag in flags:
@@ -2368,6 +2630,8 @@ def normalize_shareholder(raw: dict[str, Any], people: list[dict[str, Any]], com
         form24_allotment_text += f"\nUnpaid share capital: {currency} {format_money_number(unpaid)}"
     return {
         **item,
+        "is_corporate": "Yes" if is_corporate else "",
+        "is_individual": "" if is_corporate else "Yes",
         "shareholder_name": name,
         "id_number": id_number,
         "id_type": "UEN/Registration No." if is_corporate else matched.get("id_type", item.get("id_type", "")),
@@ -2487,10 +2751,13 @@ def client_signatory_from_person(person: dict[str, Any]) -> dict[str, Any]:
 
 def render_docx(template_path: Path, output_path: Path, context: dict[str, Any]) -> None:
     doc = Document(template_path)
+    filter_conditional_blocks(doc, context)
+    expand_repeat_markers(doc, context)
     for paragraph in doc.paragraphs:
         render_paragraph(paragraph, context)
     for table in doc.tables:
         render_table(table, context)
+    strip_empty_marker_paragraphs(doc)
     doc.save(output_path)
 
 

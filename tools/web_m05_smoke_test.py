@@ -9,7 +9,7 @@ from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 
 BASE_URL = "http://127.0.0.1:8088/"
-INPUT = Path("outputs/M05_annual_review_stress_input.xlsx")
+INPUT = Path("outputs/M05_annual_review_stress_input_v03.xlsx")
 
 
 def post_form(opener, path: str, data: dict[str, str], timeout: int = 30):
@@ -51,11 +51,11 @@ def main() -> None:
     upload = post_file(opener, "upload", INPUT)
     html = upload.read().decode("utf-8", "ignore")
     job_url = upload.geturl()
-    if "生成年审 M05 PDF 包" not in html:
-        raise RuntimeError("M05 generate button was not found on the job page.")
-    for unwanted in ["生成普通董事决议 M01 PDF 包", "生成股份转让 M03 PDF 包", "生成增资配股 M04 PDF 包"]:
+    if "generate-p2-m05" not in html:
+        raise RuntimeError("M05 generate action was not found on the job page.")
+    for unwanted in ["generate-p2-m01", "generate-p2-m02", "generate-p2-m03", "generate-p2-m04"]:
         if unwanted in html:
-            raise RuntimeError(f"Unexpected generate button found: {unwanted}")
+            raise RuntimeError(f"Unexpected generate action found: {unwanted}")
     match = re.search(r"[?&]id=(\d+)", job_url)
     if not match:
         raise RuntimeError(f"Could not read job id from {job_url}")

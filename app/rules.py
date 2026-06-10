@@ -402,18 +402,50 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
         fye = text(annual.get("fye_date"))
         if not fye:
             warnings.append("年审已启用，但缺少 fye_date。")
-        files.extend(
-            [
-                file_item("AGM Cover / Document List", "年审文件清单", "不签或随包", "Yes", package="年审包", doc_type="Cover"),
-                file_item("Directors' Resolution to Convene AGM", "批准财报并召开 AGM", "董事签署", "Yes", package="年审包", doc_type="DR"),
-                file_item("Notice of AGM", "通知股东 AGM 事项", "董事/秘书发出", "Yes", package="年审包", doc_type="Notice"),
-                file_item("Shorter Notice Consent", "短通知同意", "股东签署", "Auto", manual_review=True, package="年审包", doc_type="Consent"),
-                file_item("Attendance Sheet and AGM Minutes", "AGM 出席和会议记录", "主席/股东", "Yes", package="年审包", doc_type="Minutes"),
-                file_item("Annual Return Authorization", "授权 BizFile 年报申报", "董事/客户授权人", "Yes", package="年审包", doc_type="Authorization"),
-                file_item("Management Representation Letter", "管理层声明", "董事签署", text(annual.get("management_rep_letter")) or "Auto", manual_review=True, package="年审包", doc_type="MRL"),
+        status_values = " ".join(
+            text(annual.get(key)).lower()
+            for key in [
+                "accounts_status",
+                "company_activity_status",
+                "financial_statements_type",
+                "audit_exemption_status",
+                "agm_status",
+                "agm_route",
             ]
         )
-        preview.append(preview_item("年审包", 1, "AGM/Annual Return 文件包", f"FYE: {fye or '-'}；AGM: {text(annual.get('agm_date')) or '-'}；方式: {text(annual.get('agm_route')) or 'ordinary_agm'}"))
+        is_dormant_route = "dormant" in status_values
+        is_audited_route = any(value in status_values.split() for value in ["audited", "audit_required"])
+        agm_route_values = " ".join(text(annual.get(key)).lower() for key in ["agm_status", "agm_route"])
+        no_agm_route = any(
+            token in status_values
+            for token in ["dormant_company", "exempt", "dispensed", "written_resolution", "written_resolutions", "no_agm"]
+        ) and any(token in agm_route_values for token in ["dormant_company", "exempt", "dispensed", "written_resolution", "written_resolutions", "no_agm"])
+        files.extend(
+            [
+                file_item("Annual Review Document List", "年审文件清单", "不签或随包", "Yes", package="年审包", doc_type="Cover"),
+                file_item("Annual Review Directors' Resolution", "批准年审、财报/休眠状态和 AR 授权", "董事签署", "Yes", package="年审包", doc_type="DR"),
+            ]
+        )
+        if no_agm_route:
+            files.append(file_item("Members' Written Resolution / Consent", "AGM 豁免、书面决议或休眠年审路线", "成员/股东签署", "Yes", manual_review=True, package="年审包", doc_type="Consent"))
+        else:
+            files.extend(
+                [
+                    file_item("Notice of AGM", "通知股东 AGM 事项", "董事/秘书发出", "Yes", package="年审包", doc_type="Notice"),
+                    file_item("Shorter Notice Consent", "短通知同意", "股东签署", "Auto", manual_review=True, package="年审包", doc_type="Consent"),
+                    file_item("Proxy Form", "AGM proxy appointing instrument", "成员/股东签署", "Auto", manual_review=True, package="年审包", doc_type="Proxy"),
+                    file_item("Attendance Sheet and AGM Minutes", "AGM 出席和会议记录", "主席/股东", "Yes", package="年审包", doc_type="Minutes"),
+                ]
+            )
+        statement_label = "Dormant / no financial statements statement" if is_dormant_route else "Audited accounts review statement" if is_audited_route else "Section 205C small company audit exemption statement"
+        files.extend(
+            [
+                file_item("Annual Return Authorization", "授权 BizFile 年报申报", "董事/客户授权人", "Yes", package="年审包", doc_type="Authorization"),
+                file_item(statement_label, "财报方式/休眠/审计状态声明", "董事签署", "Yes", manual_review=True, package="年审包", doc_type="Statement"),
+                file_item("Management Representation Letter", "管理层声明或休眠公司声明", "董事签署", text(annual.get("management_rep_letter")) or "Auto", manual_review=True, package="年审包", doc_type="MRL"),
+            ]
+        )
+        preview.append(preview_item("年审包", 1, "AGM/书面年审/Annual Return 文件包", f"FYE: {fye or '-'}；AGM: {text(annual.get('agm_date')) or '-'}；状态: {text(annual.get('accounts_status')) or 'default'} / {text(annual.get('agm_status')) or text(annual.get('agm_route')) or 'ordinary_agm'}"))
 
     if high_risk_items:
         warnings.append("以下事项建议人工复核后再生成正式文件：" + "、".join(dedupe(high_risk_items)))

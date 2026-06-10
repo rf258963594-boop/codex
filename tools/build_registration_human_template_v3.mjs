@@ -13,6 +13,8 @@ const COLORS = {
   key: "#EEF2F7",
   input: "#FFF8D6",
   note: "#F8FAFC",
+  border: "#D9E2EC",
+  borderStrong: "#B7C6D8",
 };
 
 const companyFields = [
@@ -48,7 +50,7 @@ const companyFields = [
 const peopleFields = [
   ["人员编号", "Person ID", "person_id", "建议 P001/P002；给联系人、代理人、签字人引用；不引用时可空"],
   ["来源", "Source", "source", "可空；空白/new=手填；common=调用后台常用人员"],
-  ["常用人员名称", "Common person", "common_person_name", "source=common 时填写后台保存的名称；常用人员资料和默认身份由后台补"],
+  ["常用人员名称", "Common person", "common_person_name", "source=common 时建议填写后台保存的名称；如留空，系统会尝试用英文姓名匹配，但精确填写更稳。"],
   ["英文姓名", "Full name", "full_name", "只填正式英文姓名；不要写 Director/Shareholder/客户董事等身份说明；调用常用人员时可空"],
   ["证件类型", "ID type", "id_type", "Passport / NRIC / FIN"],
   ["证件号", "ID number", "id_number", ""],
@@ -62,7 +64,7 @@ const peopleFields = [
   ["是否挂名董事", "Nominee director", "is_nominee_director", "通常留空=Auto；常用挂名董事由后台判断，客户董事不用点 No"],
   ["是否秘书", "Secretary", "is_secretary", "通常留空=Auto；常用秘书由后台判断，手填秘书才选 Yes"],
   ["是否股东", "Shareholder", "is_shareholder", "通常留空=Auto；系统按“股东与股份”页自动判断"],
-  ["是否授权代表", "Authorised rep", "is_authorized_rep", "通常留空=Auto；企业股东授权代表才需要填 Yes"],
+  ["是否授权代表", "Authorised rep", "is_authorized_rep", "通常留空；企业股东授权代表请优先在“股东与股份”页填写名称。只有需要把此人作为通用客户授权签字人时才填 Yes。"],
   ["是否需要签字", "Signing required", "signing_required", "通常留空=Auto；系统按文件类型和人员身份判断；客户协议指定签字人请填公司信息页 client_signatory_person_id"],
   ["任命/文件日期", "Appointment/document date (system)", "appointment_date", "可空；P1 生成时统一使用注册日期，通常不用单独填写"],
   ["备注", "Remarks", "remarks", ""],
@@ -76,7 +78,7 @@ const shareholderFields = [
   ["企业注册地", "Corporate registration country", "corporate_registration_country", ""],
   ["企业注册号", "Corporate registration no.", "corporate_registration_number", ""],
   ["企业注册地址", "Corporate registered address", "corporate_registered_address", ""],
-  ["企业授权代表", "Authorised representative", "authorized_rep_full_name", "企业股东建议填写"],
+  ["企业授权代表", "Authorised representative", "authorized_rep_full_name", "企业股东填写代表签字人姓名；人员页“是否授权代表”可留空。"],
   ["股份类别", "Share class", "share_class", "留空默认 Ordinary"],
   ["股数", "Shares", "shares", "必填"],
   ["已发行股本", "Issued share capital", "issued_share_capital", "通常留空=股数 1:1；如 100万股每股1，填 1,000,000"],
@@ -151,6 +153,10 @@ function noteStyle(sheet, a1) {
   };
 }
 
+function grid(sheet, a1, color = COLORS.border) {
+  range(sheet, a1).format.borders = { preset: "all", style: "thin", color };
+}
+
 function setWidths(sheet, widths) {
   widths.forEach((width, idx) => {
     sheet.getRangeByIndexes(0, idx, 1, 1).format.columnWidthPx = width;
@@ -189,6 +195,7 @@ function buildReadme(wb) {
   ];
   header(ws, "A3:C3");
   noteStyle(ws, "A4:C20");
+  grid(ws, "A3:C20");
   setWidths(ws, [150, 560, 440, 20, 20, 20]);
 }
 
@@ -212,6 +219,7 @@ function buildVerticalSingleSheet(wb, name, titleText, fields, sampleValues = {}
   keyStyle(ws, `C4:C${data.length + 3}`);
   inputStyle(ws, `D4:D${data.length + 3}`);
   noteStyle(ws, `F4:F${data.length + 3}`);
+  grid(ws, `A3:F${data.length + 3}`);
   ws.freezePanes.freezeRows(3);
   setWidths(ws, [190, 220, 210, 340, 110, 520]);
 }
@@ -236,6 +244,7 @@ function buildTransposedSheet(wb, name, titleText, fields, objectPrefix, objectC
   keyStyle(ws, `C4:C${rows.length + 3}`);
   noteStyle(ws, `D4:D${rows.length + 3}`);
   inputStyle(ws, `E4:${lastCol}${rows.length + 3}`);
+  grid(ws, `A3:${lastCol}${rows.length + 3}`);
   ws.freezePanes.freezeRows(3);
   ws.freezePanes.freezeColumns(4);
   setWidths(ws, [180, 210, 200, 300, ...Array(objectCount).fill(190)]);
@@ -263,10 +272,10 @@ function sampleCompany() {
 
 function samplePeople() {
   return [
-    { person_id: "P001", source: "common", common_person_name: "挂名董事 A", is_director: "Auto", is_local_resident_director: "Auto", is_nominee_director: "Auto", is_secretary: "Auto", is_shareholder: "Auto", is_authorized_rep: "Auto", signing_required: "Auto", appointment_date: "27/05/2026", remarks: "调用后台常用人员资料；身份可保持 Auto" },
-    { person_id: "P002", source: "common", common_person_name: "公司秘书 A", is_director: "Auto", is_local_resident_director: "Auto", is_nominee_director: "Auto", is_secretary: "Auto", is_shareholder: "Auto", is_authorized_rep: "Auto", signing_required: "Auto", appointment_date: "27/05/2026", remarks: "调用后台常用人员资料；身份可保持 Auto" },
-    { person_id: "P003", source: "new", full_name: "ZHANG YI", id_type: "Passport", id_number: "P1000001A", nationality: "Chinese", date_of_birth: "03/03/1988", residential_address: "ROOM 1808, INTERNATIONAL COMMERCE CENTRE, BEIJING, CHINA", email: "zhang.yi@example.com", phone: "+86 13800000001", is_director: "Yes", is_local_resident_director: "Auto", is_nominee_director: "Auto", is_secretary: "Auto", is_shareholder: "Auto", is_authorized_rep: "Auto", signing_required: "Auto", appointment_date: "27/05/2026", remarks: "客户董事兼股东；股东身份可由股东与股份表判断" },
-    { person_id: "P004", source: "new", full_name: "ZHANG ER", id_type: "Passport", id_number: "P2000002B", nationality: "Chinese", date_of_birth: "04/04/1990", residential_address: "SHENZHEN BAY TECHNOLOGY ECOLOGY PARK, SHENZHEN, CHINA", email: "zhang.er@example.com", phone: "+86 13900000002", is_director: "Yes", is_local_resident_director: "Auto", is_nominee_director: "Auto", is_secretary: "Auto", is_shareholder: "Auto", is_authorized_rep: "Auto", signing_required: "Auto", appointment_date: "27/05/2026", remarks: "客户董事兼股东；股东身份可由股东与股份表判断" },
+    { person_id: "P001", source: "common", common_person_name: "挂名董事 A", is_director: "Auto", is_local_resident_director: "Auto", is_nominee_director: "Auto", is_secretary: "Auto", is_shareholder: "Auto", is_authorized_rep: "", signing_required: "Auto", appointment_date: "27/05/2026", remarks: "调用后台常用人员资料；身份可保持 Auto" },
+    { person_id: "P002", source: "common", common_person_name: "公司秘书 A", is_director: "Auto", is_local_resident_director: "Auto", is_nominee_director: "Auto", is_secretary: "Auto", is_shareholder: "Auto", is_authorized_rep: "", signing_required: "Auto", appointment_date: "27/05/2026", remarks: "调用后台常用人员资料；身份可保持 Auto" },
+    { person_id: "P003", source: "new", full_name: "ZHANG YI", id_type: "Passport", id_number: "P1000001A", nationality: "Chinese", date_of_birth: "03/03/1988", residential_address: "ROOM 1808, INTERNATIONAL COMMERCE CENTRE, BEIJING, CHINA", email: "zhang.yi@example.com", phone: "+86 13800000001", is_director: "Yes", is_local_resident_director: "Auto", is_nominee_director: "Auto", is_secretary: "Auto", is_shareholder: "Auto", is_authorized_rep: "", signing_required: "Auto", appointment_date: "27/05/2026", remarks: "客户董事兼股东；股东身份可由股东与股份表判断" },
+    { person_id: "P004", source: "new", full_name: "ZHANG ER", id_type: "Passport", id_number: "P2000002B", nationality: "Chinese", date_of_birth: "04/04/1990", residential_address: "SHENZHEN BAY TECHNOLOGY ECOLOGY PARK, SHENZHEN, CHINA", email: "zhang.er@example.com", phone: "+86 13900000002", is_director: "Yes", is_local_resident_director: "Auto", is_nominee_director: "Auto", is_secretary: "Auto", is_shareholder: "Auto", is_authorized_rep: "", signing_required: "Auto", appointment_date: "27/05/2026", remarks: "客户董事兼股东；股东身份可由股东与股份表判断" },
   ];
 }
 
@@ -293,6 +302,7 @@ function buildMappingSheet(wb) {
   ];
   header(ws, "A3:E3");
   noteStyle(ws, "A4:E8");
+  grid(ws, "A3:E8");
   setWidths(ws, [170, 250, 420, 150, 360]);
 }
 
@@ -320,6 +330,7 @@ function buildCheckSheet(wb) {
   ];
   header(ws, "A3:D3");
   noteStyle(ws, "A4:D16");
+  grid(ws, "A3:D16");
   setWidths(ws, [190, 260, 380, 520]);
 }
 
