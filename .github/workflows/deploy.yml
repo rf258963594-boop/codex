@@ -1,0 +1,43 @@
+name: Deploy website
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to deploy"
+        required: true
+        default: "main"
+
+concurrency:
+  group: secretary-files-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to server
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
+      SSH_PORT: ${{ secrets.ALIYUN_PORT || '22' }}
+    steps:
+      - name: Validate required secrets
+        run: |
+          test -n "${{ secrets.ALIYUN_HOST }}" || (echo "Missing ALIYUN_HOST" && exit 1)
+          test -n "${{ secrets.ALIYUN_USER }}" || (echo "Missing ALIYUN_USER" && exit 1)
+          test -n "${{ secrets.ALIYUN_SSH_KEY }}" || (echo "Missing ALIYUN_SSH_KEY" && exit 1)
+          test -n "${{ secrets.DEPLOY_PATH }}" || (echo "Missing DEPLOY_PATH" && exit 1)
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.ALIYUN_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" "${{ secrets.ALIYUN_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Run remote deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "${{ secrets.ALIYUN_USER }}@${{ secrets.ALIYUN_HOST }}" \
+            "cd '${{ secrets.DEPLOY_PATH }}' && DEPLOY_BRANCH='${DEPLOY_BRANCH}' bash scripts/deploy_server.sh"

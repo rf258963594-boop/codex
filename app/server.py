@@ -20,6 +20,7 @@ from config import (
     DATA_DIR,
     DOC_TEMPLATE_DIR,
     GENERATED_DIR,
+    IMPORT_TEMPLATE_DIR,
     MAX_UPLOAD_BYTES,
     OUTPUTS_DIR,
     P1_VERSION,
@@ -64,6 +65,27 @@ TEMPLATE_DOWNLOADS = {
     "change_blank": ("现有公司变更 v2 空白模板", OUTPUTS_DIR / "AI适配_现有公司变更资料模板_v2_空白.xlsx"),
     "change_sample": ("现有公司变更 v2 示例模板", OUTPUTS_DIR / "AI适配_现有公司变更资料模板_v2_示例.xlsx"),
 }
+
+TEMPLATE_DOWNLOADS.update(
+    {
+        "registration_human_blank": (
+            TEMPLATE_DOWNLOADS["registration_human_blank"][0],
+            IMPORT_TEMPLATE_DIR / "P1_registration_blank_v3_1.xlsx",
+        ),
+        "registration_human_sample": (
+            TEMPLATE_DOWNLOADS["registration_human_sample"][0],
+            IMPORT_TEMPLATE_DIR / "P1_registration_sample_v3_1.xlsx",
+        ),
+        "maintenance_blank": (
+            TEMPLATE_DOWNLOADS["maintenance_blank"][0],
+            IMPORT_TEMPLATE_DIR / "P2_maintenance_annual_blank_v7.xlsx",
+        ),
+        "maintenance_sample": (
+            TEMPLATE_DOWNLOADS["maintenance_sample"][0],
+            IMPORT_TEMPLATE_DIR / "P2_maintenance_annual_sample_v7.xlsx",
+        ),
+    }
+)
 
 PUBLIC_TEMPLATE_KEYS = {
     "registration_human_blank",

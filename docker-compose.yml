@@ -1,23 +1,26 @@
 services:
   secretary-files:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: secretary-files:latest
     container_name: secretary-files
     ports:
-      - "8088:8088"
+      - "${APP_PORT:-8088}:8088"
     environment:
       APP_HOST: "0.0.0.0"
       APP_PORT: "8088"
+      DEFAULT_ADMIN_USERNAME: "${DEFAULT_ADMIN_USERNAME:-admin}"
+      DEFAULT_ADMIN_PASSWORD: "${DEFAULT_ADMIN_PASSWORD:-change-this-before-first-start}"
       SOFFICE_PATH: "/usr/bin/soffice"
       LIBREOFFICE_PROFILE_DIR: "/tmp/libreoffice-profile"
     volumes:
       - secretary_data:/app/app/data
       - secretary_uploads:/app/app/uploads
       - secretary_generated:/app/app/generated
-      - secretary_templates:/app/app/doc_templates
     restart: unless-stopped
 
 volumes:
   secretary_data:
   secretary_uploads:
   secretary_generated:
-  secretary_templates:

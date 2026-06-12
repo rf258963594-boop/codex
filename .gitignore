@@ -20,13 +20,17 @@ server_8088*.err
 app/server.node*.log
 
 # Local website state and sensitive runtime data
+.env
 app/uploads/
 app/generated/
 app/data/*
 !app/data/.gitkeep
+backups/
+dist/
 
 # Generated reports, previews, render caches, and scratch output
 outputs/
+tmp/
 
 # Locally extracted third-party tools
 tools/poppler_extract/
@@ -36,4 +40,3 @@ tools/poppler_extract/
 Thumbs.db
 *.tmp
 *.bak
-

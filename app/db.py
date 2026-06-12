@@ -3,7 +3,7 @@ import secrets
 import sqlite3
 from datetime import UTC, datetime
 
-from config import DATA_DIR, DB_PATH
+from config import DATA_DIR, DB_PATH, DEFAULT_ADMIN_PASSWORD, DEFAULT_ADMIN_USERNAME
 
 
 def connect():
@@ -112,14 +112,14 @@ def init_db():
             """
         )
         ensure_columns(conn)
-        user = conn.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()
+        user = conn.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_ADMIN_USERNAME,)).fetchone()
         if not user:
             conn.execute(
                 "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-                ("admin", hash_password("admin123"), "admin", now()),
+                (DEFAULT_ADMIN_USERNAME, hash_password(DEFAULT_ADMIN_PASSWORD), "admin", now()),
             )
         else:
-            conn.execute("UPDATE users SET active = 1 WHERE username = ?", ("admin",))
+            conn.execute("UPDATE users SET active = 1 WHERE username = ?", (DEFAULT_ADMIN_USERNAME,))
         seed_defaults(conn)
 
 
