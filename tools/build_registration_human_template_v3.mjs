@@ -118,6 +118,7 @@ function title(sheet, a1) {
     fill: COLORS.title,
     font: { bold: true, color: "#FFFFFF", size: 16 },
     wrapText: true,
+    borders: { preset: "all", style: "thin", color: COLORS.borderStrong },
   };
 }
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
@@ -17,6 +17,12 @@ HEADER_FILL = PatternFill("solid", fgColor="1F4D78")
 SECTION_FILL = PatternFill("solid", fgColor="EAF2F8")
 INPUT_FILL = PatternFill("solid", fgColor="FFF8D6")
 NOTE_FILL = PatternFill("solid", fgColor="F8FAFC")
+THIN_BORDER = Border(
+    left=Side(style="thin", color="CBD5E1"),
+    right=Side(style="thin", color="CBD5E1"),
+    top=Side(style="thin", color="CBD5E1"),
+    bottom=Side(style="thin", color="CBD5E1"),
+)
 WHITE_BOLD = Font(color="FFFFFF", bold=True)
 BOLD = Font(bold=True)
 KEY_FONT = Font(color="475569", size=9)
@@ -26,7 +32,6 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 YES_NO = '"Auto,Yes,No"'
 PERSON_ACTIONS = '"appoint_director,resign_director,appoint_secretary,resign_secretary"'
 FIELD_LABELS = '"ID type,ID number,Residential address,Email,Phone,Nationality,Name,Other"'
-TRANSFER_MODE = '"cooperative,non_cooperative"'
 CONSIDERATION_BASIS = '"internal_paid_up_basis,acra_paid_up_capital_basis,stamp_duty_higher_of_price_or_nav"'
 
 
@@ -58,11 +63,11 @@ KV_FIELDS = [
     ("新 FYE", "New FYE", "new_fye", "", "FYE 变更时填", "DD/MM/YYYY。"),
     ("下个账期开始", "Next accounts period start", "next_accounts_period_start", "", "可空", ""),
     ("下个账期结束", "Next accounts period end", "next_accounts_period_end", "", "可空", ""),
-    ("是否转入秘书公司", "Transfer-in required", "transfer_in_required", "", "需要时填 Yes", "转入没有可靠的新值触发项；需要转入时填 Yes。"),
-    ("转入模式", "Transfer-in mode", "transfer_in_mode", "cooperative", "可空", "cooperative / non_cooperative。"),
+    ("是否转入秘书公司", "Transfer-in required", "transfer_in_required", "", "需要时填 Yes", "转入需要时填 Yes；M01 正常出，M02 一律兜底。"),
+    ("转入模式", "Transfer-in mode", "transfer_in_mode", "", "内部预留", "通常留空；系统不再要求区分配合/不配合。"),
     ("旧秘书公司", "Old secretary firm", "old_secretary_company", "", "可空", ""),
     ("新秘书公司", "New secretary firm", "new_secretary_company", "RSIN GROUP PTE. LTD.", "可空", ""),
-    ("是否出辞职信", "Generate resignation letter", "generate_resignation_letter", "No", "可空", "不配合转入通常 No。"),
+    ("是否出辞职信", "Generate resignation letter", "generate_resignation_letter", "No", "可空", "只有需要旧人员单独签辞职信时填 Yes；一般留 No。"),
     ("是否做年审", "Annual review required", "annual_review_required", "", "默认 Auto", "留空/Auto 时，填写 FYE 或 AGM 日期即可生成年审包；填 No 则不生成。"),
     ("年审 FYE", "Annual review FYE", "fye_date", "", "年审时填", "DD/MM/YYYY。"),
     ("AGM 日期", "AGM date", "agm_date", "", "可空", "DD/MM/YYYY。"),
@@ -314,6 +319,20 @@ def add_table_validations(ws, header_row: int, first_data_row: int, last_data_ro
             add_validation(ws, f"{get_column_letter(col)}{first_data_row}:{get_column_letter(col)}{last_data_row}", values)
 
 
+def cell_has_fill(cell) -> bool:
+    fill = cell.fill
+    rgb = getattr(fill.fgColor, "rgb", None) if fill and fill.fgColor else None
+    return bool(fill and fill.fill_type and rgb not in (None, "00000000", "FFFFFFFF"))
+
+
+def apply_template_borders(wb: Workbook) -> None:
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.value not in (None, "") or cell_has_fill(cell):
+                    cell.border = THIN_BORDER
+
+
 def add_section(ws, row: int, title: str, headers: list[tuple[str, str]], rows: list[dict[str, Any]], blank_rows: int = 6) -> int:
     ws.cell(row, 1).value = title
     ws.cell(row, 1).fill = SECTION_FILL
@@ -373,7 +392,6 @@ def build_workbook(sample: bool) -> Workbook:
     add_kv_validation(ws, "change_business_activity_required", YES_NO)
     add_kv_validation(ws, "change_fye_required", YES_NO)
     add_kv_validation(ws, "transfer_in_required", YES_NO)
-    add_kv_validation(ws, "transfer_in_mode", TRANSFER_MODE)
     add_kv_validation(ws, "generate_resignation_letter", YES_NO)
     add_kv_validation(ws, "annual_review_required", YES_NO)
 
@@ -486,6 +504,7 @@ def build_annual_sheet(wb: Workbook, sample: bool) -> None:
 def save_workbook(wb: Workbook, name: str) -> Path:
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / name
+    apply_template_borders(wb)
     wb.save(path)
     return path
 

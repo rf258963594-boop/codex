@@ -8,6 +8,7 @@ import shutil
 import sys
 import threading
 import traceback
+import zipfile
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,6 +40,7 @@ from doc_generator import (
 from doc_render import convert_docx_to_pdf
 from excel_parser import parse_excel, to_json
 from rules import suggest_files
+from signatures import default_signature_text, ensure_signature_image
 
 
 TEMPLATE_DOWNLOADS = {
@@ -594,6 +596,15 @@ class App(BaseHTTPRequestHandler):
         generated_m03_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P2_M03_pdf_package.zip"
         generated_m04_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P2_M04_pdf_package.zip"
         generated_m05_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P2_M05_pdf_package.zip"
+        generated_packages = [
+            ("P1 注册文件包", generated_zip),
+            ("M01 普通变更 DR 包", generated_m01_zip),
+            ("M02 转入文件包", generated_m02_zip),
+            ("M03 股份转让包", generated_m03_zip),
+            ("M04 增资配股包", generated_m04_zip),
+            ("M05 年审文件包", generated_m05_zip),
+        ]
+        has_download = any(path.exists() for _, path in generated_packages)
         generated_link = (
             f"<a class='button-link' href='/generated/{h(generated_zip.name)}'>{h(download_label('P1', user))}</a>"
             if generated_zip.exists()
@@ -624,7 +635,7 @@ class App(BaseHTTPRequestHandler):
             if generated_m05_zip.exists()
             else ""
         )
-        download_links = f"<div class='button-row'>{generated_link}{generated_m01_link}{generated_m02_link}{generated_m03_link}{generated_m04_link}{generated_m05_link}</div>" if generated_link or generated_m01_link or generated_m02_link or generated_m03_link or generated_m04_link or generated_m05_link else ""
+        download_links = f"<div class='button-row'>{generated_link}{generated_m01_link}{generated_m02_link}{generated_m03_link}{generated_m04_link}{generated_m05_link}</div>" if has_download else ""
         generation_notice = (
             """
             <div class="info-box">
@@ -636,6 +647,7 @@ class App(BaseHTTPRequestHandler):
             if is_generating
             else ""
         )
+        generation_notice = auto_generation_notice(is_generating)
         generate_control = (
             "<p class='muted'>PDF 正在后台生成，请稍等。</p>"
             if is_generating
@@ -715,6 +727,9 @@ class App(BaseHTTPRequestHandler):
             else:
                 generate_control = "<p class='muted'>旧变更 v2 表当前只做判断预览；请使用公司维护/变更年审 v3 表生成正式文件。</p>"
 
+        can_generate_any = bool(can_generate or can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05)
+        generate_control = auto_generation_control(row, has_download, can_generate_any, bool(blocking_errors))
+
         admin_details = ""
         if is_admin:
             admin_details = f"""
@@ -741,6 +756,7 @@ class App(BaseHTTPRequestHandler):
           </div>
           {generation_notice}
           {download_links}
+          {generated_files_panel(generated_packages)}
           {review_progress(row, summary, can_generate, can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05, bool(generated_link or generated_m01_link or generated_m02_link or generated_m03_link or generated_m04_link or generated_m05_link))}
           {alert_block("严重错误", blocking_errors, "error-box")}
           {review_workflow(summary, warnings, blocking_errors, user)}
@@ -845,27 +861,33 @@ class App(BaseHTTPRequestHandler):
           </div>
         </section>
         {overview_html}
-        <section class="grid">
-          <div class="panel">
-            <h3>字段来源</h3>
-            <div class="source-grid">
-              <div><strong>Excel 资料表</strong><span>公司、人员、股份、变更事项和年审数据的主来源。</span></div>
-              <div><strong>后台默认值</strong><span>常用秘书、挂名董事、默认地址或联系方式，可被 Excel 覆盖。</span></div>
-              <div><strong>系统自动计算</strong><span>例如首个 FYE、文件份数、签字人和可合并的 DR 事项。</span></div>
+        <details class="admin-overview-drawer admin-logic-drawer">
+          <summary>
+            <span>系统逻辑说明</span>
+            <small>字段来源、默认值和当前文件包能力</small>
+          </summary>
+          <section class="grid">
+            <div class="panel">
+              <h3>字段来源</h3>
+              <div class="source-grid">
+                <div><strong>Excel 资料表</strong><span>公司、人员、股份、变更事项和年审数据的主来源。</span></div>
+                <div><strong>后台默认值</strong><span>常用秘书、挂名董事、默认地址或联系方式，可被 Excel 覆盖。</span></div>
+                <div><strong>系统自动计算</strong><span>例如首个 FYE、文件份数、签字人和可合并的 DR 事项。</span></div>
+              </div>
             </div>
-          </div>
-          <div class="panel">
-            <h3>当前生成能力</h3>
-            <div class="source-grid">
-              <div><strong>注册文件包</strong><span>内部编号 P1，已生成 PDF 包。</span></div>
-              <div><strong>普通董事决议</strong><span>内部编号 M01，已生成 PDF 包。</span></div>
-              <div><strong>转入文件包</strong><span>内部编号 M02，已按两份签字 PDF 生成。</span></div>
-              <div><strong>股份转让包</strong><span>内部编号 M03，已生成转股决议、Instrument、股权证书和内部清单。</span></div>
-              <div><strong>增资配股包</strong><span>内部编号 M04，已生成授权、配股、申请书、证书和 Form 24。</span></div>
-              <div><strong>年审文件包</strong><span>内部编号 M05，已生成 AGM、AR 授权和复核清单。</span></div>
+            <div class="panel">
+              <h3>当前生成能力</h3>
+              <div class="source-grid">
+                <div><strong>注册文件包</strong><span>内部编号 P1，已生成 PDF 包。</span></div>
+                <div><strong>普通董事决议</strong><span>内部编号 M01，已生成 PDF 包。</span></div>
+                <div><strong>转入文件包</strong><span>内部编号 M02，已按两份签字 PDF 生成。</span></div>
+                <div><strong>股份转让包</strong><span>内部编号 M03，已生成转股决议、Instrument、股权证书和内部清单。</span></div>
+                <div><strong>增资配股包</strong><span>内部编号 M04，已生成授权、配股、申请书、证书和 Form 24。</span></div>
+                <div><strong>年审文件包</strong><span>内部编号 M05，已生成 AGM、AR 授权和复核清单。</span></div>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </details>
         <section class="panel" id="users">
           <div class="section-header">
             <div>
@@ -894,7 +916,7 @@ class App(BaseHTTPRequestHandler):
             <summary>{'编辑常用人员' if edit_person else '新增常用人员'}</summary>
             {common_person_form_html(edit_person)}
           </details>
-          <div class="table-wrap"><table><thead><tr><th>名称</th><th>身份/职务</th><th>证件类型</th><th>证件号</th><th>国籍</th><th>电话</th><th>状态</th><th>备注</th><th>操作</th></tr></thead><tbody>{people_rows or '<tr><td colspan="9">暂无常用人员</td></tr>'}</tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>名称</th><th>匹配简称</th><th>身份/职务</th><th>证件类型</th><th>证件号</th><th>国籍</th><th>电话</th><th>状态</th><th>签名</th><th>备注</th><th>操作</th></tr></thead><tbody>{people_rows or '<tr><td colspan="11">暂无常用人员</td></tr>'}</tbody></table></div>
         </section>
         <section class="panel" id="templates">
           <div class="section-header">
@@ -979,7 +1001,10 @@ class App(BaseHTTPRequestHandler):
             common_rows = conn.execute("SELECT * FROM common_people WHERE active = 1").fetchall()
             common = {
                 r["display_name"]: {
+                    "id": r["id"],
+                    "display_name": r["display_name"],
                     "full_name": r["display_name"],
+                    "aliases": r["aliases"] if "aliases" in r.keys() else "",
                     "default_role": r["default_role"],
                     "id_type": r["id_type"],
                     "id_number": r["id_number"],
@@ -987,6 +1012,9 @@ class App(BaseHTTPRequestHandler):
                     "residential_address": r["residential_address"],
                     "email": r["email"],
                     "phone": r["phone"],
+                    "signature_text": r["signature_text"] if "signature_text" in r.keys() else "",
+                    "signature_image_path": r["signature_image_path"] if "signature_image_path" in r.keys() else "",
+                    "auto_signature_enabled": r["auto_signature_enabled"] if "auto_signature_enabled" in r.keys() else 0,
                     "is_local_resident_director": bool(r["is_local_resident_director"]),
                 }
                 for r in common_rows
@@ -1032,6 +1060,7 @@ class App(BaseHTTPRequestHandler):
             )
             job_id = cur.lastrowid
         log_action(user["id"], "upload", filename)
+        self.queue_auto_pdf_generation(user["id"], job_id, job_code, parsed, suggestions)
         self.redirect(f"/job?id={job_id}")
 
     def queue_pdf_generation(self, user_id: int, row, parsed: dict, generator, generating_status: str, done_status: str, action: str) -> None:
@@ -1053,6 +1082,30 @@ class App(BaseHTTPRequestHandler):
                 log_action(user_id, f"{action}_failed", f"{job_code}: {detail[-1800:]}")
 
         threading.Thread(target=worker, name=f"pdf-generation-{job_code}", daemon=True).start()
+
+    def queue_auto_pdf_generation(self, user_id: int, job_id: int, job_code: str, parsed: dict, suggestions: dict) -> None:
+        tasks = auto_generation_tasks(parsed, suggestions)
+        if not tasks:
+            return
+        with connect() as conn:
+            conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("generating_pdf", job_id))
+
+        def worker() -> None:
+            generated: list[str] = []
+            try:
+                for code, generator in tasks:
+                    generator(parsed, job_code)
+                    generated.append(code)
+                with connect() as conn:
+                    conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("pdf_generated", job_id))
+                log_action(user_id, "auto_generate_pdf_packages", f"{job_code}: {', '.join(generated)}")
+            except Exception:
+                detail = traceback.format_exc(limit=8)
+                with connect() as conn:
+                    conn.execute("UPDATE generation_jobs SET status = ? WHERE id = ?", ("generation_failed", job_id))
+                log_action(user_id, "auto_generate_pdf_packages_failed", f"{job_code}: {detail[-1800:]}")
+
+        threading.Thread(target=worker, name=f"auto-pdf-generation-{job_code}", daemon=True).start()
 
     def handle_generate_p1(self, user):
         fields = self.read_form_urlencoded()
@@ -1189,6 +1242,7 @@ class App(BaseHTTPRequestHandler):
 
         values = {
             "display_name": display_name,
+            "aliases": fields.get("aliases", [""])[0].strip(),
             "default_role": person_roles_from_fields(fields),
             "id_type": fields.get("id_type", [""])[0].strip(),
             "id_number": fields.get("id_number", [""])[0].strip(),
@@ -1203,19 +1257,26 @@ class App(BaseHTTPRequestHandler):
             ) else 0,
             "active": 1 if fields.get("active", [""])[0] == "1" else 0,
             "notes": fields.get("notes", [""])[0].strip(),
+            "signature_text": fields.get("signature_text", [""])[0].strip() or default_signature_text(display_name),
+            "auto_signature_enabled": 1 if fields.get("auto_signature_enabled", [""])[0] == "1" else 0,
+            "signature_image_path": fields.get("signature_image_path", [""])[0].strip(),
         }
+        if values["auto_signature_enabled"]:
+            values["signature_image_path"] = ensure_signature_image(values["signature_text"], display_name)
         with connect() as conn:
             if person_id:
                 conn.execute(
                     """
                     UPDATE common_people
-                    SET display_name = ?, default_role = ?, id_type = ?, id_number = ?, nationality = ?,
+                    SET display_name = ?, aliases = ?, default_role = ?, id_type = ?, id_number = ?, nationality = ?,
                         residential_address = ?, email = ?, phone = ?, is_local_resident_director = ?,
-                        active = ?, notes = ?
+                        active = ?, notes = ?, signature_text = ?, signature_image_path = ?,
+                        auto_signature_enabled = ?
                     WHERE id = ?
                     """,
                     (
                         values["display_name"],
+                        values["aliases"],
                         values["default_role"],
                         values["id_type"],
                         values["id_number"],
@@ -1226,6 +1287,9 @@ class App(BaseHTTPRequestHandler):
                         values["is_local_resident_director"],
                         values["active"],
                         values["notes"],
+                        values["signature_text"],
+                        values["signature_image_path"],
+                        values["auto_signature_enabled"],
                         person_id,
                     ),
                 )
@@ -1233,10 +1297,11 @@ class App(BaseHTTPRequestHandler):
                 conn.execute(
                     """
                     INSERT INTO common_people
-                    (display_name, default_role, id_type, id_number, nationality, residential_address, email, phone,
-                     is_local_resident_director, active, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (display_name, aliases, default_role, id_type, id_number, nationality, residential_address, email, phone,
+                     is_local_resident_director, active, notes, signature_text, signature_image_path, auto_signature_enabled)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(display_name) DO UPDATE SET
+                      aliases = excluded.aliases,
                       default_role = excluded.default_role,
                       id_type = excluded.id_type,
                       id_number = excluded.id_number,
@@ -1246,10 +1311,14 @@ class App(BaseHTTPRequestHandler):
                       phone = excluded.phone,
                       is_local_resident_director = excluded.is_local_resident_director,
                       active = excluded.active,
-                      notes = excluded.notes
+                      notes = excluded.notes,
+                      signature_text = excluded.signature_text,
+                      signature_image_path = excluded.signature_image_path,
+                      auto_signature_enabled = excluded.auto_signature_enabled
                     """,
                     (
                         values["display_name"],
+                        values["aliases"],
                         values["default_role"],
                         values["id_type"],
                         values["id_number"],
@@ -1260,6 +1329,9 @@ class App(BaseHTTPRequestHandler):
                         values["is_local_resident_director"],
                         values["active"],
                         values["notes"],
+                        values["signature_text"],
+                        values["signature_image_path"],
+                        values["auto_signature_enabled"],
                     ),
                 )
         log_action(user["id"], "save_common_person", display_name)
@@ -1669,6 +1741,25 @@ def alert_block(title: str, items: list[str], class_name: str) -> str:
     return f"<div class='{class_name}'><strong>{h(title)}</strong><ul>{lis}</ul></div>"
 
 
+def auto_generation_tasks(parsed: dict, suggestions: dict) -> list[tuple[str, object]]:
+    summary = suggestions.get("summary", {}) if isinstance(suggestions, dict) else {}
+    if summary.get("blocking_errors"):
+        return []
+    task_type = parsed.get("task_type")
+    if task_type == "incorporation":
+        return [("P1", generate_p1_pdf_package)]
+    if task_type != "maintenance":
+        return []
+    options = [
+        ("M01", "m01_available", generate_p2_m01_pdf_package),
+        ("M02", "m02_available", generate_p2_m02_pdf_package),
+        ("M03", "m03_available", generate_p2_m03_pdf_package),
+        ("M04", "m04_available", generate_p2_m04_pdf_package),
+        ("M05", "m05_available", generate_p2_m05_pdf_package),
+    ]
+    return [(code, generator) for code, key, generator in options if summary.get(key) == "Yes"]
+
+
 def dev_code(code: str, user: dict | None) -> str:
     if not user or user.get("role") != "admin":
         return ""
@@ -1785,14 +1876,20 @@ def admin_overview_html(users, people, rules, job_stats) -> str:
     )
     return f"""
     <section class="panel" id="overview">
-      <div class="section-header">
-        <div>
-          <h3>后台总览</h3>
-          <p class="muted">先看账号、常用人员、模板和任务状态；需要维护时再进入下面对应模块。</p>
+      <details class="admin-overview-drawer">
+        <summary>
+          <span>后台总览</span>
+          <small>账号、常用人员、模板、规则和任务状态</small>
+        </summary>
+        <div class="section-header compact">
+          <div>
+            <h3>后台总览</h3>
+            <p class="muted">先看账号、常用人员、模板和任务状态；需要维护时再进入下面对应模块。</p>
+          </div>
+          <span class="badge">维护面板</span>
         </div>
-        <span class="badge">维护面板</span>
-      </div>
-      <div class="admin-kpi-grid">{card_html}</div>
+        <div class="admin-kpi-grid">{card_html}</div>
+      </details>
     </section>
     """
 
@@ -2049,7 +2146,7 @@ def user_table_row(row, current_user: dict) -> str:
       <td>{status}</td>
       <td>{h(row['last_login_at'])}</td>
       <td>{h(row['created_at'])}</td>
-      <td><div class="row-actions"><a href="/settings?edit_user={h(row['id'])}">编辑</a>{toggle_form}</div></td>
+      <td><div class="row-actions"><a href="/settings?edit_user={h(row['id'])}#users">编辑</a>{toggle_form}</div></td>
     </tr>
     """
 
@@ -2103,7 +2200,8 @@ def common_person_form_html(edit_person) -> str:
     return f"""
     <form method="post" action="/settings/common-people/save" class="admin-form">
       <input type="hidden" name="id" value="{h(row_value(edit_person, 'id'))}">
-      <label>显示名称<input name="display_name" value="{h(row_value(edit_person, 'display_name'))}" required></label>
+      <label>显示名称 / 正式全名<input name="display_name" value="{h(row_value(edit_person, 'display_name'))}" required></label>
+      <label>匹配简称 / 别名<input name="aliases" value="{h(row_value(edit_person, 'aliases'))}" placeholder="例如 fendi, trang；多个用逗号分开"></label>
       <div class="wide role-picker"><strong>身份/职务</strong>{role_checkboxes(roles)}</div>
       <label>证件类型<input name="id_type" value="{h(row_value(edit_person, 'id_type'))}" placeholder="NRIC / Passport / FIN"></label>
       <label>证件号码<input name="id_number" value="{h(row_value(edit_person, 'id_number'))}"></label>
@@ -2111,7 +2209,10 @@ def common_person_form_html(edit_person) -> str:
       <label>电话<input name="phone" value="{h(row_value(edit_person, 'phone'))}"></label>
       <label>Email<input name="email" value="{h(row_value(edit_person, 'email'))}"></label>
       <label class="wide">住址<input name="residential_address" value="{h(row_value(edit_person, 'residential_address'))}"></label>
+      <label>签名简称<input name="signature_text" value="{h(row_value(edit_person, 'signature_text'))}" placeholder="例如 Fendi / L.T.N. Trang"></label>
+      <input type="hidden" name="signature_image_path" value="{h(row_value(edit_person, 'signature_image_path'))}">
       <input type="hidden" name="is_local_resident_director" value="{'1' if 'Local Resident Director' in roles or 'Nominee Director' in roles else '0'}">
+      <label class="check"><input type="checkbox" name="auto_signature_enabled" value="1" {checked_attr(bool(row_value(edit_person, 'auto_signature_enabled')))}> 启用自动签名</label>
       <label class="check"><input type="checkbox" name="active" value="1" {checked_attr(active)}> 启用</label>
       <label class="wide">备注<input name="notes" value="{h(row_value(edit_person, 'notes'))}"></label>
       <button type="submit">{'保存修改' if editing else '新增常用人员'}</button>
@@ -2125,6 +2226,14 @@ def common_person_table_row(row) -> str:
     toggle_label = "停用" if active else "启用"
     toggle_value = "0" if active else "1"
     status = "<span class='status-pill ok'>启用</span>" if active else "<span class='status-pill muted'>停用</span>"
+    row_keys = set(row.keys())
+    signature_enabled = bool(row["auto_signature_enabled"]) if "auto_signature_enabled" in row_keys else False
+    signature_text = row["signature_text"] if "signature_text" in row_keys and row["signature_text"] else ""
+    signature_status = (
+        f"<span class='status-pill ok'>已启用</span> {h(signature_text)}"
+        if signature_enabled
+        else "<span class='status-pill muted'>未启用</span>"
+    )
     note = row["notes"] or ""
     if str(note).startswith("示例"):
         note = f"{note}；示例数据"
@@ -2144,12 +2253,14 @@ def common_person_table_row(row) -> str:
     return f"""
     <tr>
       <td>{h(row['display_name'])}</td>
+      <td>{h(row['aliases'] if 'aliases' in row.keys() and row['aliases'] else '')}</td>
       <td>{role_badges(row['default_role'])}</td>
       <td>{h(row['id_type'])}</td>
       <td>{h(row['id_number'])}</td>
       <td>{h(row['nationality'])}</td>
       <td>{h(row['phone'])}</td>
       <td>{status}</td>
+      <td>{signature_status}</td>
       <td>{h(note)}</td>
       <td><div class="row-actions"><a href="/settings?edit_person={h(row['id'])}#people">编辑</a>{toggle_form}{delete_form}</div></td>
     </tr>
@@ -2301,6 +2412,60 @@ def package_status_cards(files: list[dict[str, object]], summary: dict[str, obje
     return f"<div class='package-grid'>{''.join(cards)}</div>"
 
 
+def auto_generation_notice(is_generating: bool) -> str:
+    if not is_generating:
+        return ""
+    return """
+    <div class="info-box generating-box">
+      <span class="spinner" aria-hidden="true"></span>
+      <div>
+        <strong>正在生成 PDF 文件包</strong>
+        <p>上传已完成，系统正在后台生成。页面会自动刷新，完成后下载按钮会显示在这里。</p>
+      </div>
+    </div>
+    <script>setTimeout(() => window.location.reload(), 5000);</script>
+    """
+
+
+def auto_generation_control(row, has_download: bool, can_generate_any: bool, has_errors: bool) -> str:
+    if is_generation_status(row["status"]):
+        return "<p class='muted'>系统正在生成文件包，请稍等。生成完成后页面会自动出现下载按钮。</p>"
+    if has_download:
+        return "<p class='muted'>文件已经生成。请直接下载上方文件包；如果判断不对，修改 Excel 后重新上传一次即可。</p>"
+    if row["status"] == "generation_failed":
+        return "<div class='error-box'><strong>自动生成失败</strong><p>请检查表格字段或稍后重新上传。管理员可以在后台日志查看失败原因。</p></div>"
+    if has_errors:
+        return "<p class='error'>系统检查发现严重错误，请修改 Excel 后重新上传。</p>"
+    if can_generate_any:
+        return "<p class='muted'>这个旧任务尚未自动生成。请重新上传一次表格，系统会自动生成文件包。</p>"
+    return "<p class='muted'>当前表格没有识别到已接入的生成器项目。请检查表格选项或换用当前版本模板。</p>"
+
+
+def generated_files_panel(packages: list[tuple[str, Path]]) -> str:
+    sections = []
+    for label, path in packages:
+        if not path.exists():
+            continue
+        try:
+            with zipfile.ZipFile(path) as zf:
+                names = [name for name in zf.namelist() if name.lower().endswith(".pdf")]
+        except zipfile.BadZipFile:
+            names = []
+        items = "".join(f"<li>{h(name)}</li>" for name in names[:30])
+        more = f"<li>... 另有 {len(names) - 30} 个文件</li>" if len(names) > 30 else ""
+        sections.append(
+            f"""
+            <details class="generated-package" open>
+              <summary>{h(label)} · {len(names)} 个 PDF</summary>
+              <ul>{items}{more}</ul>
+            </details>
+            """
+        )
+    if not sections:
+        return ""
+    return f"<div class='generated-files'><strong>已生成文件</strong>{''.join(sections)}</div>"
+
+
 def review_workflow(summary: dict[str, object], warnings: list[str], blocking_errors: list[str], user: dict | None) -> str:
     if blocking_errors:
         items = "".join(f"<li>{h(item)}</li>" for item in blocking_errors)
@@ -2333,6 +2498,36 @@ def review_workflow(summary: dict[str, object], warnings: list[str], blocking_er
 
 def is_generation_status(status: str) -> bool:
     return status == "generating_pdf" or status.endswith("_generating_pdf")
+
+
+def review_workflow(summary: dict[str, object], warnings: list[str], blocking_errors: list[str], user: dict | None) -> str:
+    if blocking_errors:
+        items = "".join(f"<li>{h(item)}</li>" for item in blocking_errors)
+        return f"""
+        <div class="error-box">
+          <strong>需要先修改表格</strong>
+          <p>下面问题会影响文件生成。请回到 Excel 修改后重新上传。</p>
+          <ul>{items}</ul>
+        </div>
+        """
+    manual_count = int(summary.get("manual_review_items") or 0)
+    if not warnings and not manual_count:
+        return """
+        <div class="info-box">
+          <strong>检查通过</strong>
+          <p>没有严重错误。系统会自动生成 PDF 文件包；下方仍保留判断信息，方便你快速核对。</p>
+        </div>
+        """
+    items = "".join(f"<li>{h(item)}</li>" for item in warnings)
+    admin_note = "<p class='muted'>管理员可在下方文件规则明细中查看哪些文件标记为需要复核。</p>" if user and user.get("role") == "admin" else ""
+    return f"""
+    <div class="warning">
+      <strong>需要人工复核</strong>
+      <p>这些不是系统阻断错误，文件仍会自动生成；发送客户前请核对 Excel、BizFile、签字人和文件清单。</p>
+      <ul>{items or '<li>文件清单中存在需要复核的项目。</li>'}</ul>
+      {admin_note}
+    </div>
+    """
 
 
 def review_progress(row, summary: dict[str, object], can_generate: bool, can_generate_p2: bool, has_download: bool) -> str:
@@ -2393,6 +2588,67 @@ def generation_steps(row, summary: dict[str, object], can_generate: bool, can_ge
             ("1", "核对文件清单", "旧变更表先做判断预览。"),
             ("2", "换用 v3 表", "需要生成时建议使用维护/变更/年审 v3 表。"),
             ("3", "重新上传", "由系统重新判断。"),
+        ]
+    cards = "".join(
+        f"<div class='step-card'><span>{h(num)}</span><strong>{h(title)}</strong><p>{h(detail)}</p></div>"
+        for num, title, detail in steps
+    )
+    return f"<div class='step-grid'>{cards}</div>"
+
+
+def review_progress(row, summary: dict[str, object], can_generate: bool, can_generate_p2: bool, has_download: bool) -> str:
+    has_errors = bool(summary.get("blocking_errors"))
+    is_generating = is_generation_status(row["status"])
+    can_generate_any = bool(can_generate or can_generate_p2)
+    steps = [
+        ("1", "上传资料表", "完成", "done"),
+        ("2", "系统检查", "需修改" if has_errors else "已通过", "error" if has_errors else "done"),
+        (
+            "3",
+            "自动生成",
+            "生成中" if is_generating else "已生成" if has_download else "等待重新上传" if can_generate_any else "无可生成项目",
+            "active" if is_generating else "done" if has_download else "pending",
+        ),
+        ("4", "下载文件包", "已生成" if has_download else "生成后下载", "done" if has_download else "pending"),
+    ]
+    cards = "".join(
+        f"""
+        <div class="process-step {h(class_name)}">
+          <span>{h(num)}</span>
+          <strong>{h(title)}</strong>
+          <small>{h(detail)}</small>
+        </div>
+        """
+        for num, title, detail, class_name in steps
+    )
+    return f"<div class='process-flow'>{cards}</div>"
+
+
+def generation_steps(row, summary: dict[str, object], can_generate: bool, can_generate_p2: bool, user: dict | None) -> str:
+    has_errors = bool(summary.get("blocking_errors"))
+    if is_generation_status(row["status"]):
+        steps = [
+            ("1", "后台生成中", "系统正在生成 Word 和 PDF 文件包。"),
+            ("2", "页面自动刷新", "生成完成后会出现下载按钮和实际文件清单。"),
+            ("3", "下载文件包", "文件较多时可能需要几十秒。"),
+        ]
+    elif row["status"] == "generation_failed":
+        steps = [
+            ("1", "检查表格", "生成失败通常是字段缺失、模板占位符或转换 PDF 出错。"),
+            ("2", "修改后重传", "当前流程建议直接改 Excel 后重新上传。"),
+            ("3", "后台日志", "管理员可在后台查看失败记录。"),
+        ]
+    elif has_errors:
+        steps = [
+            ("1", "打开原 Excel", "修正严重错误对应字段。"),
+            ("2", "重新上传", "系统会重新检查并自动生成。"),
+            ("3", "下载新文件", "新任务生成完成后直接下载。"),
+        ]
+    else:
+        steps = [
+            ("1", "查看判断信息", "系统保留文件清单和签字逻辑，方便快速核对。"),
+            ("2", "直接下载", "上传后自动生成，无需再点确认生成。"),
+            ("3", "有误就重传", "如果判断不对，修改 Excel 后重新上传一次。"),
         ]
     cards = "".join(
         f"<div class='step-card'><span>{h(num)}</span><strong>{h(title)}</strong><p>{h(detail)}</p></div>"

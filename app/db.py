@@ -50,6 +50,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS common_people (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               display_name TEXT UNIQUE NOT NULL,
+              aliases TEXT,
               default_role TEXT,
               id_type TEXT,
               id_number TEXT,
@@ -128,6 +129,17 @@ def ensure_columns(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
     if "last_login_at" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT")
+
+    common_cols = {row["name"] for row in conn.execute("PRAGMA table_info(common_people)").fetchall()}
+    common_person_columns = {
+        "aliases": "TEXT",
+        "signature_text": "TEXT",
+        "signature_image_path": "TEXT",
+        "auto_signature_enabled": "INTEGER NOT NULL DEFAULT 0",
+    }
+    for column, column_type in common_person_columns.items():
+        if column not in common_cols:
+            conn.execute(f"ALTER TABLE common_people ADD COLUMN {column} {column_type}")
 
     job_cols = {row["name"] for row in conn.execute("PRAGMA table_info(generation_jobs)").fetchall()}
     reserved_job_columns = {

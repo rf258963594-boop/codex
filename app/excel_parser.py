@@ -14,6 +14,7 @@ YES = {"yes", "y", "true", "1", "是", "有", "需要"}
 NO = {"no", "n", "false", "0", "否", "不", "无需", "不用"}
 AUTO = {"", "auto", "自动", "默认", "system", "系统"}
 SINGAPORE_TZ = ZoneInfo("Asia/Singapore")
+DEFAULT_PROVIDER_REGISTERED_ADDRESS = "111 NORTH BRIDGE ROAD, #29-06A, PENINSULA PLAZA, SINGAPORE 179098"
 
 
 def clean(value: Any) -> Any:
@@ -402,6 +403,7 @@ EVENT_NAME_CN = {
     "resign_director": "董事辞任",
     "appoint_secretary": "委任秘书",
     "resign_secretary": "秘书辞任",
+    "transfer_in": "转入",
     "transfer_in_cooperative": "配合转入",
     "transfer_in_non_cooperative": "不配合转入",
 }
@@ -432,6 +434,7 @@ def parse_one_page_maintenance(wb, common_people: dict[str, dict[str, Any]]) -> 
     company = dict(fields)
     company.setdefault("task_type", "maintenance")
     company.setdefault("template_version", "p2_v6_one_page")
+    apply_transfer_in_registered_office_defaults(company, fields, fields, {})
     one_page_sections = read_one_page_sections(ws)
     person_action_rows = one_page_sections.get("person_actions", [])
     person_particular_rows = one_page_sections.get("personal_particulars", [])
@@ -645,6 +648,7 @@ def parse_quick_maintenance(wb, common_people: dict[str, dict[str, Any]]) -> dic
     task_flags = {str(row.get("task_key") or "").strip(): row for row in task_rows if row.get("task_key")}
     company_changes = read_vertical_kv_sheet(wb, "公司资料变更")
     transfer_in = read_vertical_kv_sheet(wb, "转入交接")
+    apply_transfer_in_registered_office_defaults(company, company_changes, transfer_in, task_flags)
     output_options = read_vertical_kv_sheet(wb, "输出设置")
 
     shareholdings = read_transposed_table(wb, "股东现状")
@@ -685,6 +689,44 @@ def quick_task_enabled(task_flags: dict[str, dict[str, Any]], key: str) -> bool:
 def quick_task_date(task_flags: dict[str, dict[str, Any]], key: str, company: dict[str, Any], fallback: Any = "") -> Any:
     row = task_flags.get(key, {})
     return row.get("effective_date") or fallback or company.get("default_document_date", "")
+
+
+def transfer_in_enabled(fields: dict[str, Any], task_flags: dict[str, dict[str, Any]]) -> bool:
+    if fields.get("transfer_in_required") not in (None, ""):
+        return is_yes(fields.get("transfer_in_required"))
+    return quick_task_enabled(task_flags, "transfer_in")
+
+
+def normalized_address(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(clean(value)).lower())
+
+
+def apply_transfer_in_registered_office_defaults(
+    company: dict[str, Any],
+    company_changes: dict[str, Any],
+    transfer_in: dict[str, Any],
+    task_flags: dict[str, dict[str, Any]],
+) -> None:
+    if not transfer_in_enabled(transfer_in, task_flags):
+        return
+    if is_no(company_changes.get("change_registered_office_required")):
+        return
+
+    new_address = clean(company_changes.get("new_registered_office_address") or company_changes.get("registered_office_new"))
+    if not new_address:
+        new_address = DEFAULT_PROVIDER_REGISTERED_ADDRESS
+        company_changes["new_registered_office_address"] = new_address
+
+    old_address = clean(company_changes.get("old_registered_office_address") or company.get("registered_office_address"))
+    if old_address and not company_changes.get("old_registered_office_address"):
+        company_changes["old_registered_office_address"] = old_address
+
+    if company_changes.get("change_registered_office_required") in (None, ""):
+        if normalized_address(old_address) != normalized_address(new_address):
+            company_changes["change_registered_office_required"] = "Yes"
+
+    if not clean(company_changes.get("registered_office_effective_date")):
+        company_changes["registered_office_effective_date"] = transfer_in.get("effective_date") or quick_task_date(task_flags, "transfer_in", company)
 
 
 def quick_company_change_events(company: dict[str, Any], fields: dict[str, Any], task_flags: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -802,17 +844,11 @@ def quick_person_particular_events(rows: list[dict[str, Any]], company: dict[str
 
 
 def quick_transfer_in_events(company: dict[str, Any], fields: dict[str, Any], task_flags: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    if fields.get("transfer_in_required") not in (None, ""):
-        enabled = is_yes(fields.get("transfer_in_required"))
-    else:
-        enabled = quick_task_enabled(task_flags, "transfer_in")
-    if not enabled:
+    if not transfer_in_enabled(fields, task_flags):
         return []
-    mode = str(fields.get("transfer_in_mode") or "cooperative").strip().lower()
-    event_type = "transfer_in_non_cooperative" if mode in {"non_cooperative", "不配合", "不配合转入"} else "transfer_in_cooperative"
     return [
         quick_event(
-            event_type,
+            "transfer_in",
             fields.get("effective_date") or quick_task_date(task_flags, "transfer_in", company),
             approval_route="EGM+DR",
             document_group="TAKEOVER-001",
@@ -820,7 +856,7 @@ def quick_transfer_in_events(company: dict[str, Any], fields: dict[str, Any], ta
             old_value=fields.get("old_secretary_company") or company.get("current_secretary_company"),
             new_value=fields.get("new_secretary_company") or company.get("new_secretary_company") or "RSIN GROUP PTE. LTD.",
             resignation_letter=fields.get("generate_resignation_letter") or "No",
-            manual_review_required="Yes" if event_type == "transfer_in_non_cooperative" else "No",
+            manual_review_required="No",
             remarks=fields.get("remarks"),
         )
     ]
@@ -944,6 +980,34 @@ def normalized_common_person_key(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(clean(value)).lower())
 
 
+def common_person_alias_values(display_name: str, common: dict[str, Any]) -> list[str]:
+    values = [
+        display_name,
+        common.get("display_name"),
+        common.get("full_name"),
+        common.get("signature_text"),
+    ]
+    aliases = re.split(r"[,;，；\n/]+", str(common.get("aliases") or ""))
+    values.extend(alias.strip() for alias in aliases if alias.strip())
+
+    name_parts = re.findall(r"[A-Za-z0-9]+", str(display_name))
+    if name_parts:
+        values.append(name_parts[0])
+        if len(name_parts) > 1:
+            values.append(name_parts[-1])
+    return [str(clean(value)) for value in values if str(clean(value))]
+
+
+def common_person_lookup(common_people: dict[str, dict[str, Any]]) -> dict[str, str]:
+    buckets: dict[str, set[str]] = {}
+    for display_name, common in common_people.items():
+        for value in common_person_alias_values(display_name, common):
+            key = normalized_common_person_key(value)
+            if len(key) >= 3:
+                buckets.setdefault(key, set()).add(display_name)
+    return {key: next(iter(names)) for key, names in buckets.items() if len(names) == 1}
+
+
 def find_common_person(row: dict[str, Any], common_people: dict[str, dict[str, Any]]) -> tuple[str, dict[str, Any]] | tuple[str, None]:
     candidates = [
         row.get("common_person_name"),
@@ -961,16 +1025,21 @@ def find_common_person(row: dict[str, Any], common_people: dict[str, dict[str, A
             matched_name = lower_lookup[key]
             return matched_name, common_people[matched_name]
 
-    normalized_lookup = {
-        normalized_common_person_key(name): name
-        for name in common_people
-        if normalized_common_person_key(name)
-    }
+    normalized_lookup = common_person_lookup(common_people)
     for candidate in candidates:
         key = normalized_common_person_key(candidate)
         if key in normalized_lookup:
             matched_name = normalized_lookup[key]
             return matched_name, common_people[matched_name]
+        if len(key) >= 3:
+            prefix_matches = [
+                name
+                for lookup_key, name in normalized_lookup.items()
+                if lookup_key.startswith(key)
+            ]
+            if len(set(prefix_matches)) == 1:
+                matched_name = prefix_matches[0]
+                return matched_name, common_people[matched_name]
     return "", None
 
 
@@ -982,7 +1051,11 @@ def resolve_people(rows: list[dict[str, Any]], common_people: dict[str, dict[str
         name, common = find_common_person(item, common_people) if source == "common" else ("", None)
         if common:
             item["common_person_name"] = item.get("common_person_name") or name
+            item["common_person_id"] = item.get("common_person_id") or common.get("id") or ""
+            item["common_person_display_name"] = item.get("common_person_display_name") or common.get("display_name") or name
             for key in ["full_name", "id_type", "id_number", "nationality", "residential_address", "email", "phone"]:
+                item[key] = item.get(key) or common.get(key) or ""
+            for key in ["signature_text", "signature_image_path", "auto_signature_enabled"]:
                 item[key] = item.get(key) or common.get(key) or ""
             if not is_no(item.get("is_director")) and common.get("is_local_resident_director") and is_auto(item.get("is_local_resident_director")):
                 item["is_local_resident_director"] = "Yes"

@@ -48,9 +48,9 @@ CASES = [
     {
         "case": "transfer_in_sparse_defaults",
         "path": FIXTURE_DIR / "transfer_in_sparse_defaults.xlsx",
-        "generators": [("M02", generate_p2_m02_pdf_package)],
-        "expected_yes": ["m02_available"],
-        "expected_no": ["m01_available", "m03_available", "m04_available", "m05_available"],
+        "generators": [("M01", generate_p2_m01_pdf_package), ("M02", generate_p2_m02_pdf_package)],
+        "expected_yes": ["m01_available", "m02_available"],
+        "expected_no": ["m03_available", "m04_available", "m05_available"],
     },
     {
         "case": "share_transfer_sparse_defaults",

@@ -268,8 +268,9 @@ DR_EVENT_LABELS = {
 }
 
 EGM_EVENT_LABELS = {
-    "transfer_in_cooperative": "配合转入",
-    "transfer_in_non_cooperative": "不配合转入",
+    "transfer_in": "转入",
+    "transfer_in_cooperative": "转入",
+    "transfer_in_non_cooperative": "转入",
     "remove_director": "移除董事",
     "change_company_name": "公司更名",
     "strike_off": "注销/Strike off",
@@ -314,12 +315,13 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
             egm_items.append(label)
         if event_type.startswith("transfer_in"):
             transfer_in_items.append(label)
-            if event_type == "transfer_in_non_cooperative":
-                warnings.append("不配合转入场景不要生成旧人员辞职信，应使用 removal / replacement wording，并由股东层面授权。")
         if event_type in {"resign_director", "resign_secretary"} and is_yes(row.get("resignation_letter")):
             resignation_letters.append(label)
-        if is_yes(row.get("manual_review_required")) or event_type in {"remove_director", "change_company_name", "strike_off", "transfer_in_non_cooperative"}:
+        if is_yes(row.get("manual_review_required")) or event_type in {"remove_director", "change_company_name", "strike_off"}:
             high_risk_items.append(label)
+
+    director_appointments = [row for row in events if text(row.get("event_type")) == "appoint_director"]
+    secretary_appointments = [row for row in events if text(row.get("event_type")) == "appoint_secretary"]
 
     director_signer_hint = text(
         company.get("director_signer_names")
@@ -348,6 +350,12 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
         for group, labels in dr_groups.items():
             files.append(file_item("Combined Directors' Resolution", f"{group}: {'、'.join(labels)}", "董事签署", "Yes", package="普通变更 DR 包", doc_type="DR"))
             preview.append(preview_item(f"普通变更 DR 包 {group}", 1, "同组事项合并为一份董事决议", "、".join(labels)))
+        if director_appointments:
+            files.append(file_item("Director Consent / Form 45", f"识别到 {len(director_appointments)} 名新董事", "每名新董事一份；随 M01 包生成", "Yes", package="普通变更 DR 包", doc_type="Form 45"))
+            preview.append(preview_item("Director Consent / Form 45", len(director_appointments), "每名新董事一份；随 M01 包生成", event_target_summary(director_appointments)))
+        if secretary_appointments:
+            files.append(file_item("Secretary Consent / Form 45B", f"识别到 {len(secretary_appointments)} 名新秘书", "每名新秘书一份；随 M01 包生成", "Yes", package="普通变更 DR 包", doc_type="Form 45B"))
+            preview.append(preview_item("Secretary Consent / Form 45B", len(secretary_appointments), "每名新秘书一份；随 M01 包生成", event_target_summary(secretary_appointments)))
 
     if transfer_in_items:
         files.extend(
@@ -537,6 +545,18 @@ def allotment_summary(rows: list[dict[str, Any]]) -> str:
     for row in rows:
         parts.append(f"{text(row.get('allottee_name')) or text(row.get('allottee_person_id'))}: {text(row.get('shares_allotted')) or '-'} shares")
     return "；".join(parts) or "-"
+
+
+def event_target_summary(rows: list[dict[str, Any]]) -> str:
+    parts = []
+    for row in rows:
+        parts.append(
+            text(row.get("target_name"))
+            or text(row.get("target_person_id"))
+            or text(row.get("new_value"))
+            or text(row.get("event_name_cn"))
+        )
+    return "、".join([part for part in parts if part]) or "-"
 
 
 def file_item(

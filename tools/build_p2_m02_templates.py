@@ -303,30 +303,30 @@ def add_signature_text(doc: Document, title: str, placeholder: str) -> None:
 
 def build_resolution_package() -> Document:
     doc = Document()
-    configure_doc(doc, "M02 Notice and Resolutions", "P2 transfer-in notice, members authority and directors implementation template")
+    configure_doc(doc, "M02 EGM and Board Resolutions", "P2 transfer-in EGM notice, members authority and directors implementation template")
     add_company_header(doc, "NOTICE OF EXTRAORDINARY GENERAL MEETING AND RESOLUTIONS")
     add_key_value_table(
         doc,
         [
             ("Date", "{{m02.effective_date}}"),
-            ("Registered office", "{{company.registered_office_address}}"),
-            ("Existing service provider", "{{m02.old_secretary_company}}"),
+            ("Meeting / signing venue", "{{m02.meeting_place}}"),
+            ("Existing secretarial arrangement", "{{m02.old_secretary_company}}"),
             ("New service provider", "{{m02.new_secretary_company}}"),
         ],
     )
     clause_title(doc, "A. Notice of Extraordinary General Meeting")
-    clause_para(doc, "NOTICE IS HEREBY GIVEN that an Extraordinary General Meeting of the Company will be held at the registered office of the Company, or such other place as may be agreed by the members, on {{m02.effective_date}} at 10.00 a.m. for the purpose of considering and, if thought fit, passing the ordinary resolutions set out in this package, with or without modification.")
+    clause_para(doc, "NOTICE IS HEREBY GIVEN that an Extraordinary General Meeting of the Company will be held at {{m02.meeting_place}}, or such other place as may be agreed by the members, on {{m02.effective_date}} at 10.00 a.m. for the purpose of considering and, if thought fit, passing the ordinary resolutions set out in this package, with or without modification.")
     clause_para(doc, "The matters to be considered include the Company's corporate secretarial service arrangement, the handover of statutory records, the authority for related ACRA / BizFile lodgements and, where applicable, any related appointment, resignation, removal or cessation item separately identified in the Company's instructions.")
     add_signature_text(doc, "Issued By Order of the Board", "{{m02.notice_issuer_signature_block}}")
 
     doc.add_page_break()
-    add_company_header(doc, "CONSENT TO SHORTER NOTICE")
+    add_company_header(doc, "CONSENT TO SHORTER NOTICE OF EXTRAORDINARY GENERAL MEETING")
     clause_para(doc, "The undersigned member(s) of the Company hereby consent to the Extraordinary General Meeting of the Company being convened and held on shorter notice for the purpose of considering the ordinary resolutions set out in the notice of meeting, notwithstanding any shorter period of notice than may otherwise be required under the Constitution of the Company or applicable law.")
     clause_para(doc, "This consent is given in connection with the Company's transfer of corporate secretarial administration, statutory records handover and related corporate records update.")
     add_signature_text(doc, "Signed by the Member(s)", "{{m02.member_signature_blocks}}")
 
     doc.add_page_break()
-    add_company_header(doc, "MINUTES / WRITTEN RESOLUTION OF THE MEMBERS")
+    add_company_header(doc, "MINUTES OF EXTRAORDINARY GENERAL MEETING OF THE MEMBERS")
     clause_title(doc, "Background")
     clause_para(doc, "The Member(s) have considered the Company's existing corporate secretarial service arrangement with {{m02.old_secretary_company}} and the proposed engagement of {{m02.new_secretary_company}} to support the Company's statutory records and corporate secretarial administration.")
     clause_para(doc, "The Member(s) consider it in the interests of the Company to authorise the directors and the Company's authorised signatory to take all necessary steps in connection with the transfer of corporate secretarial administration, the handover of statutory records and any relevant ACRA / BizFile arrangement.")
