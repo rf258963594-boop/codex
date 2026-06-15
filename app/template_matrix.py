@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 
 
-OUT = Path(r"C:\Users\25896\Documents\Codex\2026-05-25\new-chat\outputs")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+OUT = Path(os.environ.get("OUTPUTS_DIR", PROJECT_ROOT / "outputs"))
 
 
 def editable_rank(record: dict) -> tuple[int, bool, str]:
@@ -112,4 +114,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

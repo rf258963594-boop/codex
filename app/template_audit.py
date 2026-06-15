@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 
@@ -9,8 +10,9 @@ from docx import Document
 from pypdf import PdfReader
 
 
-ROOT = Path(r"D:\RSIN GROUP Dropbox\RSIN GROUP TEAM\网站项目文件\Rbiz 智能自助线上业务操作平台-开发\签字文件")
-OUT = Path(r"C:\Users\25896\Documents\Codex\2026-05-25\new-chat\outputs")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(os.environ.get("TEMPLATE_AUDIT_SOURCE_DIR", PROJECT_ROOT / "app" / "doc_templates"))
+OUT = Path(os.environ.get("OUTPUTS_DIR", PROJECT_ROOT / "outputs"))
 
 SIG_TERMS = [
     "signature",
@@ -350,4 +352,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

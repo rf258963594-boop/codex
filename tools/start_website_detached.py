@@ -3,15 +3,24 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
+import sys
 from pathlib import Path
 
 
 HOST = "127.0.0.1"
 PORT = 8088
 PROJECT = Path(__file__).resolve().parents[1]
-PYTHON = Path(r"C:\Users\25896\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe")
 SERVER = PROJECT / "app" / "server.py"
 LOG = PROJECT / "server_8088_detached.log"
+
+
+def python_command() -> list[str]:
+    configured = os.environ.get("PYTHON_EXE")
+    if configured:
+        return [configured]
+    if sys.executable and Path(sys.executable).exists():
+        return [sys.executable]
+    return ["py", "-3"]
 
 
 def already_running() -> bool:
@@ -28,7 +37,7 @@ def main() -> None:
     creationflags = 0x00000008 | 0x00000200
     with LOG.open("ab", buffering=0) as log:
         subprocess.Popen(
-            [str(PYTHON), str(SERVER)],
+            [*python_command(), str(SERVER)],
             cwd=str(PROJECT),
             stdin=subprocess.DEVNULL,
             stdout=log,

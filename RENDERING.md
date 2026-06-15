@@ -2,7 +2,7 @@
 
 DOCX to PDF conversion is done by LibreOffice. In local Windows testing this can use your installed LibreOffice; in Docker/cloud it uses the LibreOffice installed inside the container.
 
-- Windows default fallback: `D:\Program Files\program\soffice.com`
+- Windows default fallback: the app auto-detects common LibreOffice install paths under `C:\Program Files`, `C:\Program Files (x86)`, and `D:\Program Files`
 - Docker default: `/usr/bin/soffice`
 - Override anywhere with: `SOFFICE_PATH`
 - Local LibreOffice profile: `outputs\.lo-profile-codex`
@@ -11,7 +11,7 @@ DOCX to PDF conversion is done by LibreOffice. In local Windows testing this can
 Run a render check:
 
 ```powershell
-& "C:\Users\25896\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" app\doc_render.py --input-dir outputs\P1_preserved_templates_v2 --out-dir outputs\P1_preserved_templates_v2_pdf_check
+py -3 app\doc_render.py --input-dir outputs\P1_preserved_templates_v2 --out-dir outputs\P1_preserved_templates_v2_pdf_check
 ```
 
 Full per-page PNG QA uses the repository-local Poppler zip extraction:
@@ -22,7 +22,7 @@ Full per-page PNG QA uses the repository-local Poppler zip extraction:
 Run PDF plus PNG render check:
 
 ```powershell
-& "C:\Users\25896\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" app\doc_render.py --input-dir outputs\P1_preserved_templates_v2 --out-dir outputs\P1_preserved_templates_v2_pdf_check --png
+py -3 app\doc_render.py --input-dir outputs\P1_preserved_templates_v2 --out-dir outputs\P1_preserved_templates_v2_pdf_check --png
 ```
 
 For cloud deployment, prefer the Docker runtime in `Dockerfile`; it installs LibreOffice, Noto CJK fonts, English fonts, and Poppler together so generated PDFs are more stable across machines.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
+import os
 import sqlite3
 import time
 import urllib.parse
@@ -12,8 +13,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "app" / "data" / "secretary_files.db"
 GENERATED_DIR = ROOT / "app" / "generated"
-BASE_URL = "http://127.0.0.1:8088"
-INPUT_XLSX = Path(r"C:\Users\25896\Downloads\P1_APEX_MIND_已填写.xlsx")
+BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8088")
+INPUT_XLSX = Path(
+    os.environ.get("P1_TEST_XLSX", ROOT / "tests" / "fixtures" / "defaults" / "P1_sparse_defaults.xlsx")
+)
 
 
 def post_form(opener: urllib.request.OpenerDirector, path: str, data: dict[str, str]) -> str:
