@@ -1,5 +1,15 @@
 $ErrorActionPreference = "Stop"
 
+function Set-Utf8Process {
+    [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $global:OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $env:PYTHONUTF8 = "1"
+    $env:PYTHONIOENCODING = "utf-8"
+}
+
+Set-Utf8Process
+
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 function Import-DotEnv {
