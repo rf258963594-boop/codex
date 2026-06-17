@@ -153,6 +153,14 @@ http://服务器IP:8088
 
 注意：`.env` 中的默认管理员账号密码只在第一次创建数据库时生效。如果数据库已经创建，后续需要在网站后台修改密码。
 
+如果忘记管理员密码，或第一次部署时 `.env` 使用了临时密码，可以在服务器项目目录执行：
+
+```bash
+docker compose exec secretary-files python app/reset_admin_password.py --username admin --password admin123
+```
+
+然后使用 `admin / admin123` 登录。登录后建议立即在后台改成强密码。
+
 ## 6. 手动更新网站
 
 以后如果 GitHub 的 `main` 分支有更新，在服务器执行：
