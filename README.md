@@ -3,6 +3,7 @@
 本项目是本地运行的内部文件生成网站。当前阶段以“上传 Excel 资料表，生成签字 PDF 包”为主，不做客户后台和电子签名。
 
 本机 Docker 测试和 UTF-8 编码说明见 `LOCAL_DOCKER_TESTING.md`。
+常用人员和签名迁移说明见 `COMMON_PEOPLE_MIGRATION.md`。
 
 ## 当前正式入口
 
