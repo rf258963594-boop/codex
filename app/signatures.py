@@ -103,11 +103,11 @@ def load_signature_font(text: str) -> ImageFont.FreeTypeFont | ImageFont.ImageFo
         "/usr/share/fonts/truetype/liberation2/LiberationSerif-Italic.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
     ]
-    for size in range(86, 44, -4):
-        for candidate in candidates:
-            path = Path(candidate)
-            if not path.exists():
-                continue
+    for candidate in candidates:
+        path = Path(candidate)
+        if not path.exists():
+            continue
+        for size in range(86, 44, -4):
             try:
                 font = ImageFont.truetype(str(path), size=size)
             except OSError:
@@ -147,6 +147,7 @@ def collect_auto_signatures(context: dict[str, Any]) -> list[dict[str, Any]]:
                         clean(value.get("common_person_name")),
                         clean(value.get("common_person_display_name")),
                         clean(value.get("display_name")),
+                        clean(value.get("signature_text")),
                     }
                     aliases = {alias for alias in aliases if alias}
                     item = {
@@ -216,6 +217,16 @@ def apply_signatures_to_table(
     for row_idx, row in enumerate(table.rows):
         for col_idx, cell in enumerate(row.cells):
             cell_text = clean(cell.text)
+            if contains_signature_cue(cell_text) and not is_metadata_signature_cell(table, row_idx, col_idx):
+                matching = [
+                    signature
+                    for signature in signatures
+                    if following_cell_matches_signature(table, row_idx, col_idx, signature)
+                ]
+                for signature in matching:
+                    paragraph = first_signature_paragraph(cell)
+                    if paragraph is not None:
+                        insert_signature_picture(paragraph, signature["path"], touched, applied, signature["name"])
             for signature in signatures:
                 if not text_matches_signature(cell_text, signature):
                     continue
@@ -244,6 +255,40 @@ def contains_signature_cue(text: str) -> bool:
     return "signature" in normalized or bool(re.search(r"_{6,}|-{6,}", normalized))
 
 
+def row_text(table, row_idx: int) -> str:
+    if row_idx < 0 or row_idx >= len(table.rows):
+        return ""
+    return " ".join(clean(cell.text) for cell in table.rows[row_idx].cells)
+
+
+def is_metadata_signature_cell(table, row_idx: int, col_idx: int) -> bool:
+    text = clean(table.rows[row_idx].cells[col_idx].text)
+    if not contains_signature_cue(text):
+        return False
+    normalized = normalize_name(row_text(table, row_idx))
+    metadata_markers = {
+        "nameofcompany",
+        "companyno",
+        "effectivedate",
+        "director",
+        "secretary",
+    }
+    return (row_idx == 0 and "nameofcompany" in normalized) or (
+        "nameofcompany" in normalized and any(marker in normalized for marker in metadata_markers)
+    )
+
+
+def following_cell_matches_signature(table, row_idx: int, col_idx: int, signature: dict[str, Any]) -> bool:
+    for next_idx in range(row_idx + 1, min(len(table.rows), row_idx + 4)):
+        row = table.rows[next_idx]
+        if col_idx >= len(row.cells):
+            continue
+        text = clean(row.cells[col_idx].text)
+        if text_matches_signature(text, signature):
+            return True
+    return False
+
+
 def previous_signature_paragraph(paragraphs: list[Any], index: int) -> Any | None:
     for pos in range(index - 1, max(-1, index - 4), -1):
         paragraph = paragraphs[pos]
@@ -259,6 +304,8 @@ def previous_signature_cell(table, row_idx: int, col_idx: int):
             continue
         cell = prev_row.cells[col_idx]
         if contains_signature_cue(cell.text):
+            if is_metadata_signature_cell(table, prev_idx, col_idx):
+                continue
             return cell
     return None
 

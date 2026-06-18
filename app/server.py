@@ -12,8 +12,11 @@ import zipfile
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
+
+from PIL import Image, UnidentifiedImageError
 
 from config import (
     APP_NAME,
@@ -41,7 +44,10 @@ from doc_generator import (
 from doc_render import convert_docx_to_pdf
 from excel_parser import parse_excel, to_json
 from rules import suggest_files
-from signatures import default_signature_text, ensure_signature_image
+from signatures import SIGNATURE_DIR, default_signature_text, ensure_signature_image, safe_slug, signature_relative_path
+
+
+SIGNATURE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024
 
 
 TEMPLATE_DOWNLOADS = {
@@ -1256,7 +1262,15 @@ class App(BaseHTTPRequestHandler):
     def handle_save_common_person(self, user):
         if user.get("role") != "admin":
             return self.error_page(HTTPStatus.FORBIDDEN, "只有管理员可以保存常用人员。")
-        fields = self.read_form_urlencoded()
+        files: dict[str, tuple[str, bytes]] = {}
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" in content_type.lower():
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length)
+            raw_fields, files = parse_multipart_form(content_type, body)
+            fields = normalize_form_fields(raw_fields)
+        else:
+            fields = self.read_form_urlencoded()
         person_id = fields.get("id", [""])[0].strip()
         display_name = fields.get("display_name", [""])[0].strip()
         if not display_name:
@@ -1283,7 +1297,15 @@ class App(BaseHTTPRequestHandler):
             "auto_signature_enabled": 1 if fields.get("auto_signature_enabled", [""])[0] == "1" else 0,
             "signature_image_path": fields.get("signature_image_path", [""])[0].strip(),
         }
-        if values["auto_signature_enabled"]:
+        uploaded_signature = files.get("signature_file")
+        if uploaded_signature and uploaded_signature[1]:
+            try:
+                values["signature_image_path"] = save_uploaded_signature_png(display_name, uploaded_signature[0], uploaded_signature[1])
+            except ValueError as exc:
+                return self.error_page(HTTPStatus.BAD_REQUEST, str(exc))
+        elif values["auto_signature_enabled"] and (
+            not values["signature_image_path"] or fields.get("regenerate_signature", [""])[0] == "1"
+        ):
             values["signature_image_path"] = ensure_signature_image(values["signature_text"], display_name)
         with connect() as conn:
             if person_id:
@@ -2220,7 +2242,7 @@ def common_person_form_html(edit_person) -> str:
     if edit_person and bool(edit_person["is_local_resident_director"]) and "Local Resident Director" not in roles:
         roles.append("Local Resident Director")
     return f"""
-    <form method="post" action="/settings/common-people/save" class="admin-form">
+    <form method="post" action="/settings/common-people/save" enctype="multipart/form-data" class="admin-form">
       <input type="hidden" name="id" value="{h(row_value(edit_person, 'id'))}">
       <label>显示名称 / 正式全名<input name="display_name" value="{h(row_value(edit_person, 'display_name'))}" required></label>
       <label>匹配简称 / 别名<input name="aliases" value="{h(row_value(edit_person, 'aliases'))}" placeholder="例如 fendi, trang；多个用逗号分开"></label>
@@ -2232,9 +2254,11 @@ def common_person_form_html(edit_person) -> str:
       <label>Email<input name="email" value="{h(row_value(edit_person, 'email'))}"></label>
       <label class="wide">住址<input name="residential_address" value="{h(row_value(edit_person, 'residential_address'))}"></label>
       <label>签名简称<input name="signature_text" value="{h(row_value(edit_person, 'signature_text'))}" placeholder="例如 Fendi / L.T.N. Trang"></label>
+      <label class="wide">签名 PNG<input name="signature_file" type="file" accept="image/png,.png"></label>
       <input type="hidden" name="signature_image_path" value="{h(row_value(edit_person, 'signature_image_path'))}">
       <input type="hidden" name="is_local_resident_director" value="{'1' if 'Local Resident Director' in roles or 'Nominee Director' in roles else '0'}">
-      <label class="check"><input type="checkbox" name="auto_signature_enabled" value="1" {checked_attr(bool(row_value(edit_person, 'auto_signature_enabled')))}> 启用自动签名</label>
+      <label class="check"><input type="checkbox" name="auto_signature_enabled" value="1" {checked_attr(bool(row_value(edit_person, 'auto_signature_enabled')))}> 生成文件时自动套用签名</label>
+      <label class="check"><input type="checkbox" name="regenerate_signature" value="1"> 重新生成文字签名图片</label>
       <label class="check"><input type="checkbox" name="active" value="1" {checked_attr(active)}> 启用</label>
       <label class="wide">备注<input name="notes" value="{h(row_value(edit_person, 'notes'))}"></label>
       <button type="submit">{'保存修改' if editing else '新增常用人员'}</button>
@@ -2251,8 +2275,9 @@ def common_person_table_row(row) -> str:
     row_keys = set(row.keys())
     signature_enabled = bool(row["auto_signature_enabled"]) if "auto_signature_enabled" in row_keys else False
     signature_text = row["signature_text"] if "signature_text" in row_keys and row["signature_text"] else ""
+    signature_image_path = row["signature_image_path"] if "signature_image_path" in row_keys and row["signature_image_path"] else ""
     signature_status = (
-        f"<span class='status-pill ok'>已启用</span> {h(signature_text)}"
+        f"<span class='status-pill ok'>已启用</span> {'PNG' if signature_image_path else '文字'} {h(signature_text)}"
         if signature_enabled
         else "<span class='status-pill muted'>未启用</span>"
     )
@@ -2736,6 +2761,39 @@ def parse_multipart_file(content_type: str, body: bytes, field_name: str):
         payload = payload.rsplit(b"\r\n", 1)[0]
         return filename, payload
     return "", b""
+
+
+def normalize_form_fields(fields: dict[str, str] | dict[str, list[str]]) -> dict[str, list[str]]:
+    normalized: dict[str, list[str]] = {}
+    for key, value in fields.items():
+        if isinstance(value, list):
+            normalized[key] = [str(item) for item in value]
+        else:
+            normalized[key] = [str(value)]
+    return normalized
+
+
+def save_uploaded_signature_png(display_name: str, filename: str, payload: bytes) -> str:
+    if len(payload) > SIGNATURE_UPLOAD_MAX_BYTES:
+        raise ValueError("签名图片不能超过 2MB。")
+    if not payload:
+        raise ValueError("请上传有效的 PNG 签名图片。")
+
+    source_name = Path(filename or "").stem or display_name
+    target_name = safe_slug(display_name or source_name)
+    target_path = SIGNATURE_DIR / f"{target_name}.png"
+
+    try:
+        image = Image.open(BytesIO(payload))
+        if image.format != "PNG":
+            raise ValueError("签名图片目前只支持 PNG 格式。")
+        image = image.convert("RGBA")
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ValueError("请上传有效的 PNG 签名图片。") from exc
+
+    SIGNATURE_DIR.mkdir(parents=True, exist_ok=True)
+    image.save(target_path)
+    return signature_relative_path(target_path)
 
 
 def parse_multipart_form(content_type: str, body: bytes):
