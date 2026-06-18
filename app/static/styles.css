@@ -291,13 +291,34 @@ button.small-action {
 input[type="text"],
 input[type="password"],
 input[type="number"],
+input[type="date"],
 input:not([type]),
-select {
+select,
+textarea {
   width: 100%;
   border: 1px solid #bcccdc;
   border-radius: 6px;
   padding: 10px 12px;
   background: #fff;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 42px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px 16px;
+}
+
+.form-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.p2-form .panel h3 {
+  margin-top: 0;
 }
 
 input[type="file"] {

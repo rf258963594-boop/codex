@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 import secrets
 import shutil
 import sys
@@ -42,7 +43,7 @@ from doc_generator import (
     safe_filename,
 )
 from doc_render import convert_docx_to_pdf
-from excel_parser import parse_excel, to_json
+from excel_parser import parse_excel, resolve_people, to_json
 from rules import suggest_files
 from signatures import SIGNATURE_DIR, default_signature_text, ensure_signature_image, safe_slug, signature_relative_path
 
@@ -447,6 +448,8 @@ class App(BaseHTTPRequestHandler):
             return
         if path == "/":
             return self.home_page(user)
+        if path == "/p2-form":
+            return self.p2_form_page(user)
         if path == "/jobs":
             return self.jobs_page(user)
         if path == "/job":
@@ -465,6 +468,8 @@ class App(BaseHTTPRequestHandler):
             return
         if parsed.path == "/upload":
             return self.handle_upload(user)
+        if parsed.path == "/p2-form":
+            return self.handle_p2_form(user)
         if parsed.path in {"/generate-placeholder", "/generate-p1"}:
             return self.handle_generate_p1(user)
         if parsed.path == "/generate-p2-m01":
@@ -546,6 +551,7 @@ class App(BaseHTTPRequestHandler):
             <div class="operation-card">
               <strong>变更 / 年审文件生成</strong>
               <p>用于普通董事决议、转入、股份转让、增资配股和年审包。系统会根据表格内容自动判断要生成哪些文件。</p>
+              <div class="button-row"><a class="button-link secondary" href="/p2-form">打开 P2 快速表单</a></div>
               <div class="download-grid compact">{p2_cards or '<p class="muted">未找到变更/年审导入模板。</p>'}</div>
             </div>
           </div>
@@ -575,6 +581,194 @@ class App(BaseHTTPRequestHandler):
         </section>
         """
         self.send_html(render_page("上传", body, user))
+
+    def p2_form_page(self, user):
+        common_people = active_common_people_map()
+        common_options = common_people_options(common_people)
+        today = singapore_date_input()
+        body = f"""
+        <section class="panel">
+          <div class="toolbar">
+            <div>
+              <h2>P2 快速表单</h2>
+              <p class="muted">按业务事项填写；提交后系统会直接创建任务并自动生成可用的 PDF 包。</p>
+            </div>
+            <a class="button-link secondary" href="/">返回上传入口</a>
+          </div>
+        </section>
+        <form method="post" action="/p2-form" class="p2-form">
+          <datalist id="common-people">{common_options}</datalist>
+          <section class="panel">
+            <h3>公司基本信息</h3>
+            <div class="form-grid">
+              <label>公司名称<input name="company_name" required placeholder="EXAMPLE PTE. LTD."></label>
+              <label>UEN<input name="uen" placeholder="202400000A"></label>
+              <label>文件日期<input name="default_document_date" type="date" value="{h(today)}"></label>
+              <label>币种<input name="currency" value="SGD"></label>
+              <label class="wide">当前注册地址<textarea name="registered_office_address" rows="2"></textarea></label>
+              <label class="wide">新注册地址<textarea name="new_registered_office_address" rows="2" placeholder="留空则不触发注册地址变更；转入时可默认填 RSIN 地址"></textarea></label>
+              <label>董事签字人<input name="director_signer_names" list="common-people" placeholder="多个用逗号隔开"></label>
+              <label>股东/客户签字人<input name="member_signer_names" placeholder="多个用逗号隔开"></label>
+              <label>当前已发行股本<input name="issued_share_capital" placeholder="例如 80000"></label>
+              <label>当前实缴股本<input name="paid_up_capital" placeholder="例如 80000"></label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3>M01 普通变更 / 董事决议</h3>
+            <div class="form-grid">
+              <label class="check"><input type="checkbox" name="change_registered_office" value="1"> 注册地址变更</label>
+              <label class="check"><input type="checkbox" name="change_business_activity" value="1"> 营业范围 / SSIC 变更</label>
+              <label class="check"><input type="checkbox" name="change_fye" value="1"> 财年日变更</label>
+              <label>新主 SSIC<input name="primary_ssic_new"></label>
+              <label>新主营业务<input name="primary_activity_new"></label>
+              <label>新副 SSIC<input name="secondary_ssic_new"></label>
+              <label>新副营业务<input name="secondary_activity_new"></label>
+              <label>新财年日<input name="new_fye" type="date"></label>
+              <label>现任董事辞任<input name="resign_director_names" placeholder="多个用逗号隔开"></label>
+              <label>新董事委任<input name="appoint_director_names" list="common-people" placeholder="多个用逗号隔开"></label>
+              <label>前秘书辞任<input name="resign_secretary_names" placeholder="多个用逗号隔开"></label>
+              <label>新秘书委任<input name="appoint_secretary_names" list="common-people" placeholder="多个用逗号隔开"></label>
+              <label class="check"><input type="checkbox" name="resignation_letter" value="1"> 为辞任人员生成辞职信</label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3>M02 转入</h3>
+            <div class="form-grid">
+              <label class="check wide"><input type="checkbox" name="transfer_in_required" value="1"> 生成转入 EGM / 交接文件包</label>
+              <label>前秘书公司名称<input name="old_secretary_company" placeholder="不知道可留空"></label>
+              <label>新秘书公司<input name="new_secretary_company" value="RSIN GROUP PTE. LTD."></label>
+              <label>转入新挂名董事<input name="transfer_in_nominee_director_names" list="common-people" placeholder="例如 LE THI NGOC TRANG"></label>
+              <label>转入新秘书<input name="transfer_in_secretary_names" list="common-people" placeholder="例如 FENDI CHANDRA TING S ING EE"></label>
+              <label class="check wide"><input type="checkbox" name="transfer_in_resignation_letter" value="1"> 如有辞任人员，同包生成辞职信</label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3>M03 股份转让</h3>
+            <div class="form-grid">
+              <label class="check wide"><input type="checkbox" name="share_transfer_required" value="1"> 生成股份转让包</label>
+              <label>转让人<input name="transferor_name"></label>
+              <label>受让人<input name="transferee_name"></label>
+              <label>股份数量<input name="shares_transferred"></label>
+              <label>股份类别<input name="transfer_share_class" value="Ordinary"></label>
+              <label>转让日期<input name="transfer_date" type="date"></label>
+              <label>对价金额<input name="consideration_amount" placeholder="通常可留空"></label>
+              <label>对价逻辑<select name="consideration_basis">
+                <option value="internal_paid_up_basis">内部转让 / 实缴比例</option>
+                <option value="acra_paid_up_capital_basis">ACRA 登记实缴资本</option>
+                <option value="stamp_duty_higher_of_price_or_nav">需按印花税 / NAV 复核</option>
+              </select></label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3>M04 增资配股</h3>
+            <div class="form-grid">
+              <label class="check wide"><input type="checkbox" name="share_allotment_required" value="1"> 生成增资配股包</label>
+              <label>认购人 / 获配人<input name="allottee_name"></label>
+              <label>配发股份数量<input name="shares_allotted"></label>
+              <label>股份类别<input name="allotment_share_class" value="Ordinary"></label>
+              <label>新增已发行股本<input name="allotment_issued_share_capital"></label>
+              <label>新增实缴股本<input name="allotment_paid_up_share_capital"></label>
+              <label>配股日期<input name="allotment_date" type="date"></label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3>M05 年审</h3>
+            <div class="form-grid">
+              <label class="check wide"><input type="checkbox" name="annual_review_required" value="1"> 生成年审包</label>
+              <label>FYE<input name="fye_date" type="date"></label>
+              <label>AGM / 年审文件日期<input name="agm_date" type="date"></label>
+              <label>AGM 路线<select name="agm_route">
+                <option value="ordinary_agm">普通 AGM</option>
+                <option value="written_resolution">书面年审 / 股东书面决议</option>
+                <option value="exempt_or_dispensed">AGM 豁免 / dispense</option>
+              </select></label>
+              <label>财报状态<select name="accounts_status">
+                <option value="non_dormant">非休眠 / 常规小公司</option>
+                <option value="dormant">休眠</option>
+                <option value="audited">已审计</option>
+              </select></label>
+              <label>董事费<input name="directors_fee" value="0"></label>
+              <label>董事薪酬<input name="directors_remuneration" value="0"></label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3>个人资料变更</h3>
+            <div class="form-grid">
+              <label>人员姓名<input name="particular_person_name" list="common-people"></label>
+              <label>变更项目<select name="particular_field_label">
+                <option value="">不生成</option>
+                <option value="Residential address">地址</option>
+                <option value="ID number">证件号</option>
+                <option value="Email">邮箱</option>
+                <option value="Phone">电话</option>
+                <option value="Nationality">国籍</option>
+              </select></label>
+              <label class="wide">旧信息<textarea name="particular_old_value" rows="2"></textarea></label>
+              <label class="wide">新信息<textarea name="particular_new_value" rows="2"></textarea></label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <button type="submit">创建任务并生成 PDF</button>
+            <a class="button-link secondary" href="/">取消</a>
+          </section>
+        </form>
+        """
+        self.send_html(render_page("P2 快速表单", body, user))
+
+    def handle_p2_form(self, user):
+        fields = self.read_form_urlencoded()
+        common = active_common_people_map()
+        parsed = build_p2_form_parsed(fields, common)
+        suggestions = suggest_files(parsed)
+        company_name = parsed.get("company", {}).get("company_name", "")
+        summary = suggestions.get("summary", {})
+        status = "blocked" if summary.get("blocking_errors") else "needs_review"
+        job_code = f"JOB-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2).upper()}"
+        source_filename = f"P2_WEB_FORM_{safe_filename(company_name or 'company')}.form"
+        metadata = case_metadata_from_parsed(parsed, source_filename, job_code)
+        with connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO generation_jobs
+                (job_code, case_id, business_order_id, source_type, source_file_id, contact_person_id, agent_person_id,
+                 client_signatory_person_id, authorized_representative_person_id, prepared_by, snapshot_version,
+                 task_type, company_name, source_filename, upload_path, parsed_json, suggestions_json, status, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    job_code,
+                    metadata["case_id"],
+                    metadata["business_order_id"],
+                    metadata["source_type"],
+                    metadata["source_file_id"],
+                    metadata["contact_person_id"],
+                    metadata["agent_person_id"],
+                    metadata["client_signatory_person_id"],
+                    metadata["authorized_representative_person_id"],
+                    metadata["prepared_by"],
+                    metadata["snapshot_version"],
+                    parsed.get("task_type", "maintenance"),
+                    company_name,
+                    source_filename,
+                    "web-form:p2",
+                    to_json(parsed),
+                    json.dumps(suggestions, ensure_ascii=False, indent=2),
+                    status,
+                    user["id"],
+                    now(),
+                ),
+            )
+            job_id = cur.lastrowid
+        log_action(user["id"], "submit_p2_form", source_filename)
+        self.queue_auto_pdf_generation(user["id"], job_id, job_code, parsed, suggestions)
+        self.redirect(f"/job?id={job_id}")
 
     def jobs_page(self, user):
         with connect() as conn:
@@ -1042,28 +1236,7 @@ class App(BaseHTTPRequestHandler):
         upload_path = UPLOAD_DIR / safe_name
         upload_path.write_bytes(file_bytes)
 
-        with connect() as conn:
-            common_rows = conn.execute("SELECT * FROM common_people WHERE active = 1").fetchall()
-            common = {
-                r["display_name"]: {
-                    "id": r["id"],
-                    "display_name": r["display_name"],
-                    "full_name": r["display_name"],
-                    "aliases": r["aliases"] if "aliases" in r.keys() else "",
-                    "default_role": r["default_role"],
-                    "id_type": r["id_type"],
-                    "id_number": r["id_number"],
-                    "nationality": r["nationality"],
-                    "residential_address": r["residential_address"],
-                    "email": r["email"],
-                    "phone": r["phone"],
-                    "signature_text": r["signature_text"] if "signature_text" in r.keys() else "",
-                    "signature_image_path": r["signature_image_path"] if "signature_image_path" in r.keys() else "",
-                    "auto_signature_enabled": r["auto_signature_enabled"] if "auto_signature_enabled" in r.keys() else 0,
-                    "is_local_resident_director": bool(r["is_local_resident_director"]),
-                }
-                for r in common_rows
-            }
+        common = active_common_people_map()
         parsed = parse_excel(upload_path, common)
         suggestions = suggest_files(parsed)
         company_name = parsed.get("company", {}).get("company_name", "")
@@ -1793,6 +1966,324 @@ class App(BaseHTTPRequestHandler):
     def error_page(self, status: HTTPStatus, message: str):
         body = f"<section class='panel'><h2>{status.value}</h2><p>{h(message)}</p><p><a href='/'>返回首页</a></p></section>"
         self.send_html(render_page(status.phrase, body, self.current_user()), status)
+
+
+def singapore_date_input() -> str:
+    return datetime.now(DISPLAY_TIMEZONE).strftime("%Y-%m-%d")
+
+
+def active_common_people_map() -> dict[str, dict[str, object]]:
+    with connect() as conn:
+        common_rows = conn.execute("SELECT * FROM common_people WHERE active = 1").fetchall()
+    return {
+        r["display_name"]: {
+            "id": r["id"],
+            "display_name": r["display_name"],
+            "full_name": r["display_name"],
+            "aliases": r["aliases"] if "aliases" in r.keys() else "",
+            "default_role": r["default_role"],
+            "id_type": r["id_type"],
+            "id_number": r["id_number"],
+            "nationality": r["nationality"],
+            "residential_address": r["residential_address"],
+            "email": r["email"],
+            "phone": r["phone"],
+            "signature_text": r["signature_text"] if "signature_text" in r.keys() else "",
+            "signature_image_path": r["signature_image_path"] if "signature_image_path" in r.keys() else "",
+            "auto_signature_enabled": r["auto_signature_enabled"] if "auto_signature_enabled" in r.keys() else 0,
+            "is_local_resident_director": bool(r["is_local_resident_director"]),
+        }
+        for r in common_rows
+    }
+
+
+def common_people_options(common_people: dict[str, dict[str, object]]) -> str:
+    values: list[str] = []
+    for person in common_people.values():
+        display_name = str(person.get("display_name") or "").strip()
+        if display_name:
+            values.append(display_name)
+        aliases = str(person.get("aliases") or "")
+        values.extend(part.strip() for part in re.split(r"[,;/\n]+", aliases) if part.strip())
+    return "".join(f'<option value="{h(value)}"></option>' for value in dedupe_strings(values))
+
+
+def form_value(fields: dict[str, list[str]], key: str, default: str = "") -> str:
+    return (fields.get(key, [default])[0] or "").strip()
+
+
+def form_checked(fields: dict[str, list[str]], key: str) -> bool:
+    return form_value(fields, key).lower() in {"1", "yes", "true", "on"}
+
+
+def split_form_names(value: object) -> list[str]:
+    return [part.strip() for part in re.split(r"[,;/\n]+", str(value or "")) if part.strip()]
+
+
+def normalized_key(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def common_name_lookup(common_people: dict[str, dict[str, object]]) -> set[str]:
+    keys: set[str] = set()
+    for person in common_people.values():
+        keys.add(normalized_key(person.get("display_name")))
+        for alias in re.split(r"[,;/\n]+", str(person.get("aliases") or "")):
+            keys.add(normalized_key(alias))
+    return {key for key in keys if key}
+
+
+def dedupe_strings(values: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        key = text.lower()
+        if text and key not in seen:
+            seen.add(key)
+            out.append(text)
+    return out
+
+
+def build_p2_form_parsed(fields: dict[str, list[str]], common_people: dict[str, dict[str, object]]) -> dict[str, object]:
+    document_date = form_value(fields, "default_document_date") or singapore_date_input()
+    current_address = form_value(fields, "registered_office_address")
+    new_address = form_value(fields, "new_registered_office_address")
+    company = {
+        "task_type": "maintenance",
+        "template_version": "p2_web_form_v1",
+        "source_type": "WebForm",
+        "company_name": form_value(fields, "company_name"),
+        "uen": form_value(fields, "uen"),
+        "registered_office_address": current_address,
+        "default_document_date": document_date,
+        "currency": form_value(fields, "currency", "SGD") or "SGD",
+        "issued_share_capital": form_value(fields, "issued_share_capital"),
+        "paid_up_capital": form_value(fields, "paid_up_capital"),
+        "director_signer_names": form_value(fields, "director_signer_names"),
+        "member_signer_names": form_value(fields, "member_signer_names"),
+        "client_signatory_name": form_value(fields, "member_signer_names"),
+        "new_secretary_company": form_value(fields, "new_secretary_company") or "RSIN GROUP PTE. LTD.",
+        "old_secretary_company": form_value(fields, "old_secretary_company"),
+        "new_registered_office_address": new_address,
+        "egm_meeting_place": new_address,
+    }
+    lookup = common_name_lookup(common_people)
+    people: list[dict[str, object]] = []
+    person_index = 1
+
+    def add_person(name: str, **roles: str) -> str:
+        nonlocal person_index
+        name = name.strip()
+        if not name:
+            return ""
+        for person in people:
+            if str(person.get("_input_name", "")).lower() == name.lower():
+                for key, value in roles.items():
+                    if value:
+                        person[key] = value
+                return str(person["person_id"])
+        person_id = f"WEBP{person_index:03d}"
+        person_index += 1
+        is_common = normalized_key(name) in lookup
+        item: dict[str, object] = {
+            "person_id": person_id,
+            "_input_name": name,
+            "source": "common" if is_common else "new",
+            "common_person_name": name if is_common else "",
+            "full_name": "" if is_common else name,
+            "is_director": "No",
+            "is_secretary": "No",
+            "is_shareholder": "No",
+            "is_client_signatory": "No",
+            "is_local_resident_director": "Auto",
+            "is_nominee_director": "Auto",
+        }
+        item.update({key: value for key, value in roles.items() if value})
+        people.append(item)
+        return person_id
+
+    for idx, name in enumerate(split_form_names(company["director_signer_names"])):
+        add_person(name, is_director="Yes", is_client_signatory="Yes" if idx == 0 else "No")
+    for name in split_form_names(company["member_signer_names"]):
+        add_person(name, is_shareholder="Yes", is_client_signatory="Yes")
+
+    events: list[dict[str, object]] = []
+
+    def event(event_type: str, **extra: object) -> dict[str, object]:
+        row = {
+            "event_id": f"EV{len(events) + 1:03d}",
+            "event_type": event_type,
+            "event_name_cn": P2_EVENT_CN.get(event_type, event_type),
+            "generate": "Yes",
+            "effective_date": extra.pop("effective_date", document_date),
+            "approval_route": extra.pop("approval_route", "DR"),
+            "document_group": extra.pop("document_group", "DR-001"),
+            "combine_in_dr": extra.pop("combine_in_dr", "Yes"),
+            "resignation_letter": extra.pop("resignation_letter", "No"),
+            "manual_review_required": extra.pop("manual_review_required", "No"),
+        }
+        row.update(extra)
+        events.append(row)
+        return row
+
+    if form_checked(fields, "change_registered_office") or new_address:
+        event(
+            "change_registered_office",
+            old_registered_office_address=current_address,
+            new_registered_office_address=new_address,
+            old_value=current_address,
+            new_value=new_address,
+        )
+    if form_checked(fields, "change_business_activity") or any(
+        form_value(fields, key)
+        for key in ["primary_ssic_new", "primary_activity_new", "secondary_ssic_new", "secondary_activity_new"]
+    ):
+        event(
+            "change_business_activity",
+            primary_ssic_new=form_value(fields, "primary_ssic_new"),
+            primary_activity_new=form_value(fields, "primary_activity_new"),
+            secondary_ssic_new=form_value(fields, "secondary_ssic_new"),
+            secondary_activity_new=form_value(fields, "secondary_activity_new"),
+            new_value=form_value(fields, "primary_activity_new"),
+        )
+    if form_checked(fields, "change_fye") or form_value(fields, "new_fye"):
+        event("change_fye", new_value=form_value(fields, "new_fye"))
+
+    resignation_letter = "Yes" if form_checked(fields, "resignation_letter") or form_checked(fields, "transfer_in_resignation_letter") else "No"
+    for name in split_form_names(form_value(fields, "resign_director_names")):
+        person_id = add_person(name, is_director="Yes")
+        event("resign_director", target_person_id=person_id, target_name=name, resignation_letter=resignation_letter)
+    for name in split_form_names(form_value(fields, "appoint_director_names")) + split_form_names(form_value(fields, "transfer_in_nominee_director_names")):
+        person_id = add_person(name, is_director="Yes", is_local_resident_director="Auto", is_nominee_director="Auto")
+        event("appoint_director", target_person_id=person_id, target_name=name)
+    for name in split_form_names(form_value(fields, "resign_secretary_names")):
+        person_id = add_person(name, is_secretary="Yes")
+        event("resign_secretary", target_person_id=person_id, target_name=name, resignation_letter=resignation_letter)
+    for name in split_form_names(form_value(fields, "appoint_secretary_names")) + split_form_names(form_value(fields, "transfer_in_secretary_names")):
+        person_id = add_person(name, is_secretary="Yes")
+        event("appoint_secretary", target_person_id=person_id, target_name=name)
+
+    if form_checked(fields, "transfer_in_required"):
+        event(
+            "transfer_in",
+            approval_route="EGM+DR",
+            document_group="TAKEOVER-001",
+            combine_in_dr="No",
+            old_secretary_company=company["old_secretary_company"],
+            new_secretary_company=company["new_secretary_company"],
+            old_value=company["old_secretary_company"],
+            new_value=company["new_secretary_company"],
+            resignation_letter=resignation_letter,
+        )
+
+    particular_name = form_value(fields, "particular_person_name")
+    particular_field = form_value(fields, "particular_field_label")
+    particular_new = form_value(fields, "particular_new_value")
+    if particular_name and particular_field and particular_new:
+        person_id = add_person(particular_name)
+        event(
+            "update_officer_particulars",
+            target_person_id=person_id,
+            target_name=particular_name,
+            field_label=particular_field,
+            old_value=form_value(fields, "particular_old_value"),
+            new_value=particular_new,
+        )
+
+    share_transfers: list[dict[str, object]] = []
+    if form_checked(fields, "share_transfer_required") or all(
+        form_value(fields, key) for key in ["transferor_name", "transferee_name", "shares_transferred"]
+    ):
+        share_transfers.append(
+            {
+                "generate": "Yes",
+                "transferor_name": form_value(fields, "transferor_name"),
+                "transferee_name": form_value(fields, "transferee_name"),
+                "share_class": form_value(fields, "transfer_share_class", "Ordinary") or "Ordinary",
+                "shares_transferred": form_value(fields, "shares_transferred"),
+                "transfer_date": form_value(fields, "transfer_date") or document_date,
+                "consideration_amount": form_value(fields, "consideration_amount"),
+                "consideration_basis": form_value(fields, "consideration_basis") or "internal_paid_up_basis",
+                "stamp_duty_review": "Yes" if form_value(fields, "consideration_basis") == "stamp_duty_higher_of_price_or_nav" else "No",
+            }
+        )
+
+    share_allotments: list[dict[str, object]] = []
+    if form_checked(fields, "share_allotment_required") or all(
+        form_value(fields, key) for key in ["allottee_name", "shares_allotted"]
+    ):
+        share_allotments.append(
+            {
+                "generate": "Yes",
+                "allottee_name": form_value(fields, "allottee_name"),
+                "share_class": form_value(fields, "allotment_share_class", "Ordinary") or "Ordinary",
+                "shares_allotted": form_value(fields, "shares_allotted"),
+                "issued_share_capital": form_value(fields, "allotment_issued_share_capital"),
+                "paid_up_share_capital": form_value(fields, "allotment_paid_up_share_capital"),
+                "total_paid": form_value(fields, "allotment_paid_up_share_capital"),
+                "allotment_date": form_value(fields, "allotment_date") or document_date,
+                "authority_date": document_date,
+                "form24_required": "Yes",
+                "generate_certificate": "Yes",
+            }
+        )
+
+    annual_enabled = form_checked(fields, "annual_review_required") or bool(form_value(fields, "fye_date") or form_value(fields, "agm_date"))
+    annual_review = {
+        "annual_review_required": "Yes" if annual_enabled else "No",
+        "fye_date": form_value(fields, "fye_date"),
+        "agm_date": form_value(fields, "agm_date") or document_date,
+        "agm_time": "10.00 a.m.",
+        "agm_place": new_address or current_address,
+        "agm_route": form_value(fields, "agm_route") or "ordinary_agm",
+        "accounts_status": form_value(fields, "accounts_status") or "non_dormant",
+        "director_signer_name": company["director_signer_names"],
+        "shareholder_signer_name": company["member_signer_names"],
+        "ar_authorized_signer_name": company["director_signer_names"],
+        "directors_fee": form_value(fields, "directors_fee", "0") or "0",
+        "directors_remuneration": form_value(fields, "directors_remuneration", "0") or "0",
+        "management_rep_letter": "Yes",
+    }
+    resolved_people = resolve_people(people, common_people)
+    for person in resolved_people:
+        if not person.get("full_name"):
+            person["full_name"] = person.get("common_person_name") or person.get("_input_name") or ""
+
+    output_options = {
+        "package": "P2_WEB_FORM",
+        "output_format": "pdf_zip",
+        "notes": "Created from P2 quick web form.",
+    }
+    return {
+        "task_type": "maintenance",
+        "company": company,
+        "people": resolved_people,
+        "shareholders": [],
+        "shareholdings": [],
+        "generation": output_options,
+        "output_options": output_options,
+        "changes": events,
+        "change_events": events,
+        "personal_changes": [],
+        "share_changes": share_transfers,
+        "share_transfers": share_transfers,
+        "share_allotments": share_allotments,
+        "annual_review": annual_review,
+    }
+
+
+P2_EVENT_CN = {
+    "change_registered_office": "注册地址变更",
+    "change_business_activity": "营业范围/SSIC 变更",
+    "change_fye": "财年日变更",
+    "appoint_director": "委任董事",
+    "resign_director": "董事辞任",
+    "appoint_secretary": "委任秘书",
+    "resign_secretary": "秘书辞任",
+    "transfer_in": "秘书公司转入",
+    "update_officer_particulars": "人员资料变更",
+}
 
 
 def alert_block(title: str, items: list[str], class_name: str) -> str:
