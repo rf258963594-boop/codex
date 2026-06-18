@@ -9,7 +9,7 @@ import sys
 import threading
 import traceback
 import zipfile
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
@@ -48,6 +48,7 @@ from signatures import SIGNATURE_DIR, default_signature_text, ensure_signature_i
 
 
 SIGNATURE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024
+DISPLAY_TIMEZONE = timezone(timedelta(hours=8), name="SGT")
 
 
 TEMPLATE_DOWNLOADS = {
@@ -330,6 +331,22 @@ TEMPLATE_BACKUP_DIR = DATA_DIR / "template_versions"
 
 def h(value: object) -> str:
     return html.escape(str(value or ""))
+
+
+def display_time(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        if text.endswith("Z"):
+            dt = datetime.fromisoformat(text[:-1]).replace(tzinfo=UTC)
+        else:
+            dt = datetime.fromisoformat(text)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(DISPLAY_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S SGT")
+    except ValueError:
+        return text
 
 
 def render_page(title: str, body: str, user: dict | None = None) -> bytes:
@@ -2064,7 +2081,7 @@ def template_draft_panel(key: str, draft: dict[str, object] | None) -> str:
     return f"""
     <div class="draft-box">
       <strong>有待启用草稿</strong>
-      <span>{h(draft.get('version') or '')} · {h(draft.get('created_at') or '')}</span>
+      <span>{h(draft.get('version') or '')} · {h(display_time(draft.get('created_at')))}</span>
       <div class="row-actions">
         {preview}
         <form method="post" action="/settings/template/activate-draft" class="inline-form">
@@ -2188,8 +2205,8 @@ def user_table_row(row, current_user: dict) -> str:
       <td>{h(row['username'])}</td>
       <td>{h(role_label(row['role']))}</td>
       <td>{status}</td>
-      <td>{h(row['last_login_at'])}</td>
-      <td>{h(row['created_at'])}</td>
+      <td>{h(display_time(row['last_login_at']))}</td>
+      <td>{h(display_time(row['created_at']))}</td>
       <td><div class="row-actions"><a href="/settings?edit_user={h(row['id'])}#users">编辑</a>{toggle_form}</div></td>
     </tr>
     """
@@ -2216,7 +2233,7 @@ def login_log_row(row) -> str:
         "delete_jobs": "批量删除任务",
         "cleanup_old_jobs": "清理旧任务",
     }.get(row["action"], row["action"])
-    return f"<tr><td>{h(row['created_at'])}</td><td>{h(actor)}</td><td>{h(action)}</td><td>{h(row['detail'])}</td></tr>"
+    return f"<tr><td>{h(display_time(row['created_at']))}</td><td>{h(actor)}</td><td>{h(action)}</td><td>{h(row['detail'])}</td></tr>"
 
 
 def job_table_row(row, is_admin: bool) -> str:
@@ -2230,7 +2247,7 @@ def job_table_row(row, is_admin: bool) -> str:
       <td>{h(row['company_name'])}</td>
       <td>{h(row['source_filename'])}</td>
       <td>{h(status_label(row['status']))}</td>
-      <td>{h(row['created_at'])}</td>
+      <td>{h(display_time(row['created_at']))}</td>
     </tr>
     """
 
