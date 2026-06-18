@@ -14,11 +14,11 @@ from docx.table import Table
 from docx.table import _Row
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
-from docx.shared import Pt
+from docx.shared import Inches, Pt
 
 from config import DOC_TEMPLATE_DIR, GENERATED_DIR, P1_VERSION
 from doc_render import convert_docx_to_pdf
-from signatures import apply_auto_signatures
+from signatures import SIGNATURE_DOCX_WIDTH_IN, apply_auto_signatures, resolve_signature_path
 
 
 P1_TEMPLATE_DIR = DOC_TEMPLATE_DIR / "p1_standard_v3_part1"
@@ -398,9 +398,27 @@ def append_m02_resignation_letters(docx_path: Path, context: dict[str, Any]) -> 
         )
         add_m02_appended_paragraph(doc, "Please arrange for the Company's statutory records and any relevant lodgements to be updated accordingly.", after=18)
         add_m02_appended_paragraph(doc, "Yours faithfully,", after=28)
-        add_m02_appended_paragraph(doc, "Signature: ______________________________", after=12)
+        add_m02_appended_signature(doc, person, after=12)
         add_m02_appended_paragraph(doc, f"Name: {clean(person.get('full_name'))}", after=2)
     doc.save(docx_path)
+
+
+def add_m02_appended_signature(doc: Document, person: dict[str, Any], *, after: float = 12) -> None:
+    paragraph = doc.add_paragraph()
+    paragraph.paragraph_format.space_after = Pt(after)
+    paragraph.paragraph_format.line_spacing = 1.10
+    label = paragraph.add_run("Signature: ")
+    label.font.name = "Calibri"
+    label._element.rPr.rFonts.set(qn("w:eastAsia"), "Microsoft YaHei")
+    label.font.size = Pt(10.8)
+    signature_path = resolve_signature_path(person.get("signature_image_path"))
+    if signature_path:
+        paragraph.add_run().add_picture(str(signature_path), width=Inches(SIGNATURE_DOCX_WIDTH_IN))
+    else:
+        fallback = paragraph.add_run("______________________________")
+        fallback.font.name = "Calibri"
+        fallback._element.rPr.rFonts.set(qn("w:eastAsia"), "Microsoft YaHei")
+        fallback.font.size = Pt(10.8)
 
 
 def add_m02_appended_paragraph(
@@ -1499,12 +1517,24 @@ def apply_m01_event(m01: dict[str, Any], row: dict[str, Any], people: list[dict[
 def m01_target_person(row: dict[str, Any], people: list[dict[str, Any]]) -> dict[str, Any]:
     target_id = clean(row.get("target_person_id")).lower()
     target_name = clean(row.get("target_name")).lower()
+    matches: list[dict[str, Any]] = []
     for person in people:
         if target_id and clean(person.get("person_id")).lower() == target_id:
-            return person
+            matches.append(person)
         if target_name and clean(person.get("full_name")).lower() == target_name:
-            return person
-    return {}
+            matches.append(person)
+    if not matches:
+        return {}
+    return max(matches, key=person_match_priority)
+
+
+def person_match_priority(person: dict[str, Any]) -> tuple[int, int, int, int]:
+    return (
+        1 if clean(person.get("signature_image_path")) else 0,
+        1 if clean(person.get("source")).lower() == "common" else 0,
+        1 if clean(person.get("common_person_name") or person.get("common_person_display_name")) else 0,
+        len([value for value in person.values() if clean(value)]),
+    )
 
 
 def refresh_m01_officer_particular_labels(m01: dict[str, Any]) -> None:
