@@ -383,26 +383,27 @@ def append_m02_resignation_letters(docx_path: Path, context: dict[str, Any]) -> 
         add_m02_appended_paragraph(doc, clean(person.get("full_name")), bold=True, after=2)
         address = clean(person.get("address") or person.get("residential_address"))
         if address:
-            add_m02_appended_paragraph(doc, address, after=12)
-        add_m02_appended_paragraph(doc, date_text(person.get("effective_date_raw") or person.get("effective_date")), align=WD_ALIGN_PARAGRAPH.RIGHT, after=14)
+            add_m02_appended_paragraph(doc, address, bold=True, after=12)
+        resignation_date = date_text(person.get("effective_date_raw") or person.get("effective_date"))
+        add_m02_appended_paragraph(doc, resignation_date, bold=True, align=WD_ALIGN_PARAGRAPH.RIGHT, after=14)
         add_m02_appended_paragraph(doc, "The Board of Directors", after=2)
         add_m02_appended_paragraph(doc, clean(company.get("company_name")), bold=True, after=2)
-        add_m02_appended_paragraph(doc, f"Registration No. {clean(company.get('uen'))}", after=12)
+        add_m02_appended_paragraph(doc, f"Registration No. {bold_field(clean(company.get('uen')))}", after=12)
         add_m02_appended_paragraph(doc, "Dear Sirs", after=10)
         capacity = clean(person.get("capacity")) or "Officer"
         add_m02_appended_paragraph(doc, f"RE: NOTICE OF RESIGNATION AS {capacity.upper()}", bold=True, after=8)
         add_m02_appended_paragraph(
             doc,
-            f"I, {clean(person.get('full_name'))}, hereby tender my resignation as {capacity} of {clean(company.get('company_name'))} (the \"Company\") with effect from {date_text(person.get('effective_date_raw') or person.get('effective_date'))}.",
+            f"I, {bold_field(clean(person.get('full_name')))}, hereby tender my resignation as {bold_field(capacity)} of {bold_field(clean(company.get('company_name')))} (the \"Company\") with effect from {bold_field(resignation_date)}.",
         )
         add_m02_appended_paragraph(
             doc,
-            f"I confirm that I have no claim against the Company in respect of my resignation as {capacity}, except for any accrued rights or obligations which cannot be waived by law.",
+            f"I confirm that I have no claim against the Company in respect of my resignation as {bold_field(capacity)}, except for any accrued rights or obligations which cannot be waived by law.",
         )
         add_m02_appended_paragraph(doc, "Please arrange for the Company's statutory records and any relevant lodgements to be updated accordingly.", after=18)
         add_m02_appended_paragraph(doc, "Yours faithfully,", after=28)
         add_m02_appended_signature(doc, person, after=12)
-        add_m02_appended_paragraph(doc, f"Name: {clean(person.get('full_name'))}", after=2)
+        add_m02_appended_paragraph(doc, f"Name: {bold_field(clean(person.get('full_name')))}", after=2)
     doc.save(docx_path)
 
 
@@ -440,11 +441,16 @@ def add_m02_appended_paragraph(
     paragraph.paragraph_format.space_before = Pt(before)
     paragraph.paragraph_format.space_after = Pt(after)
     paragraph.paragraph_format.line_spacing = 1.10
-    run = paragraph.add_run(text)
-    run.font.name = "Calibri"
-    run._element.rPr.rFonts.set(qn("w:eastAsia"), "Microsoft YaHei")
-    run.font.size = Pt(size)
-    run.font.bold = bold
+    segments: list[tuple[str, bool]] = []
+    append_marked_segments(segments, text, bold)
+    for part, is_bold in merge_text_segments(segments):
+        if not part:
+            continue
+        run = paragraph.add_run(part)
+        run.font.name = "Calibri"
+        run._element.rPr.rFonts.set(qn("w:eastAsia"), "Microsoft YaHei")
+        run.font.size = Pt(size)
+        run.font.bold = is_bold
 
 
 def generate_p2_m02_pdf_package(parsed: dict[str, Any], job_code: str) -> Path:
@@ -744,7 +750,7 @@ def generate_p2_m05_pdf_package(parsed: dict[str, Any], job_code: str) -> Path:
     docx_zip = generate_p2_m05_package(parsed, job_code)
     docx_zip.unlink(missing_ok=True)
     code = safe_filename(job_code)
-    return build_pdf_zip_from_docx_dir(
+    return build_m05_pdf_zip_from_docx_dir(
         GENERATED_DIR / f"{code}_P2_M05_docs",
         GENERATED_DIR / f"{code}_P2_M05_pdf",
         GENERATED_DIR / f"{code}_P2_M05_pdf_package.zip",
@@ -840,6 +846,70 @@ def build_m04_pdf_zip_from_docx_dir(docx_dir: Path, pdf_dir: Path, zip_path: Pat
 
     if not final_paths:
         raise ValueError("No M04 PDF files were prepared for the final package.")
+    if zip_path.exists():
+        zip_path.unlink()
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for pdf_path in sorted(final_paths):
+            zf.write(pdf_path, arcname=pdf_path.name)
+    return zip_path
+
+
+def build_m05_pdf_zip_from_docx_dir(docx_dir: Path, pdf_dir: Path, zip_path: Path) -> Path:
+    if not docx_dir.exists():
+        raise FileNotFoundError(f"Generated DOCX folder not found: {docx_dir}")
+    pdf_dir.mkdir(parents=True, exist_ok=True)
+    final_dir = pdf_dir / "final"
+    final_dir.mkdir(parents=True, exist_ok=True)
+    for old_path in list(pdf_dir.glob("*.pdf")) + list(final_dir.glob("*.pdf")):
+        old_path.unlink()
+
+    converted: list[Path] = []
+    for docx_path in sorted(docx_dir.glob("*.docx")):
+        converted.append(convert_docx_to_pdf(docx_path, pdf_dir))
+    if not converted:
+        raise ValueError("No DOCX files were generated for PDF conversion.")
+
+    final_paths: list[Path] = []
+
+    agm_package = first_pdf_with_prefix(converted, "01_M05_agm_documents_package_")
+    annual_return_package = first_pdf_with_prefix(converted, "02_M05_annual_return_authorisation_package_")
+    company_suffix = (
+        suffix_after_prefix(agm_package, "01_M05_agm_documents_package_")
+        if agm_package
+        else suffix_after_prefix(annual_return_package, "02_M05_annual_return_authorisation_package_")
+    )
+
+    signing_sources = [path for path in [agm_package, annual_return_package] if path]
+    if signing_sources:
+        target = final_dir / f"01_M05_annual_review_signing_package_{company_suffix}.pdf"
+        merge_pdf_files(signing_sources, target)
+        final_paths.append(target)
+
+    checklist = first_pdf_with_prefix(converted, "99_M05_annual_review_internal_checklist_")
+    if checklist:
+        target = final_dir / f"99_M05_annual_review_internal_checklist_{suffix_after_prefix(checklist, '99_M05_annual_review_internal_checklist_')}.pdf"
+        copy_pdf(checklist, target)
+        final_paths.append(target)
+
+    used_names = {path.name for path in final_paths}
+    for source in converted:
+        if source.name in used_names:
+            continue
+        if any(
+            source.name.startswith(prefix)
+            for prefix in [
+                "01_M05_agm_documents_package_",
+                "02_M05_annual_return_authorisation_package_",
+                "99_M05_annual_review_internal_checklist_",
+            ]
+        ):
+            continue
+        target = final_dir / source.name
+        copy_pdf(source, target)
+        final_paths.append(target)
+
+    if not final_paths:
+        raise ValueError("No M05 PDF files were prepared for the final package.")
     if zip_path.exists():
         zip_path.unlink()
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -1344,7 +1414,21 @@ def personnel_changes_for_m02(events: list[dict[str, Any]], people: list[dict[st
 
 
 def personnel_change_summary_for_m02(changes: list[dict[str, Any]]) -> str:
-    lines = [f"{idx}. {clean(row.get('summary'))}" for idx, row in enumerate(changes, start=1) if clean(row.get("summary"))]
+    lines = []
+    for idx, row in enumerate(changes, start=1):
+        summary = clean(row.get("summary"))
+        if not summary:
+            continue
+        name = clean(row.get("full_name"))
+        capacity = clean(row.get("capacity"))
+        effective_date = clean(row.get("effective_date"))
+        if name:
+            summary = summary.replace(name, bold_field(name), 1)
+        if capacity:
+            summary = summary.replace(f"as {capacity}", f"as {bold_field(capacity)}", 1)
+        if effective_date:
+            summary = summary.replace(effective_date, bold_field(effective_date), 1)
+        lines.append(f"{idx}. {summary}")
     if lines:
         return "\n".join(lines)
     return "No separate director or company secretary appointment, resignation, removal or cessation item is included in this transfer-in package."
@@ -1390,9 +1474,9 @@ def signature_block(signer: dict[str, Any], default_capacity: str, signature_dat
     return "\n".join(
         [
             "Signature: ______________________________",
-            f"Name: {name}",
-            f"Capacity: {capacity}",
-            f"Date: {date_line}",
+            f"Name: {bold_field(name)}",
+            f"Capacity: {bold_field(capacity)}",
+            f"Date: {bold_field(date_line) if clean(signature_date) else date_line}",
         ]
     )
 
@@ -1694,11 +1778,11 @@ def consideration_text(currency: str, amount: str, basis: str) -> str:
 
 
 def m03_consideration_and_certificate_text(row: dict[str, Any]) -> str:
-    parts = [clean(row.get("consideration_text"))]
+    parts = [bold_field(clean(row.get("consideration_text")))]
     if clean(row.get("old_certificate_no")):
-        parts.append(f"old cert: {clean(row.get('old_certificate_no'))}")
+        parts.append(f"old cert: {bold_field(clean(row.get('old_certificate_no')))}")
     if clean(row.get("new_certificate_no")):
-        parts.append(f"new cert: {clean(row.get('new_certificate_no'))}")
+        parts.append(f"new cert: {bold_field(clean(row.get('new_certificate_no')))}")
     if clean(row.get("remarks")):
         parts.append(clean(row.get("remarks")))
     return "; ".join(part for part in parts if part)
@@ -1778,17 +1862,17 @@ def m03_signature_rows(signers: list[dict[str, Any]], default_capacity: str) -> 
 def compact_signature_block(signer: dict[str, Any], default_capacity: str) -> str:
     name = clean(signer.get("full_name"))
     capacity = clean(signer.get("capacity")) or default_capacity
-    return f"\n______________________________\n{name}\n{capacity}"
+    return f"\n______________________________\n{bold_field(name)}\n{bold_field(capacity)}"
 
 
 def id_line(value: Any) -> str:
     text_value = clean(value)
-    return f"ID / Reg. No.: {text_value}" if text_value else "ID / Reg. No.: ______________________________"
+    return f"ID / Reg. No.: {bold_field(text_value)}" if text_value else "ID / Reg. No.: ______________________________"
 
 
 def address_line(value: Any) -> str:
     text_value = clean(value)
-    return f"Address: {text_value}" if text_value else "Address: ______________________________"
+    return f"Address: {bold_field(text_value)}" if text_value else "Address: ______________________________"
 
 
 def m03_certificate_from_transfer(row: dict[str, Any]) -> dict[str, Any]:
@@ -1914,15 +1998,15 @@ def normalize_m04_allotment(row: dict[str, Any], company: dict[str, Any], index:
         "remarks": clean(row.get("remarks")),
     }
     item["allottee_form24_name_id"] = "\n".join(
-        part for part in [item["allottee_name"], id_line(item["allottee_id_number"]) if item["allottee_id_number"] else ""] if part
+        part for part in [bold_field(item["allottee_name"]), id_line(item["allottee_id_number"]) if item["allottee_id_number"] else ""] if part
     )
     item["form24_allotment_text"] = (
-        f"{item['shares_allotted']} {share_class} share(s)\n"
-        f"Issued share capital: {item['issued_share_capital_text']}\n"
-        f"Paid-up share capital: {item['paid_up_share_capital_text']}"
+        f"{bold_field(item['shares_allotted'])} {bold_field(share_class)} share(s)\n"
+        f"Issued share capital: {bold_field(item['issued_share_capital_text'])}\n"
+        f"Paid-up share capital: {bold_field(item['paid_up_share_capital_text'])}"
     )
     if unpaid > 0:
-        item["form24_allotment_text"] += f"\nUnpaid share capital: {currency} {format_money_number(unpaid)}"
+        item["form24_allotment_text"] += f"\nUnpaid share capital: {bold_field(f'{currency} {format_money_number(unpaid)}')}"
     return item
 
 
@@ -2037,7 +2121,7 @@ def m04_checklist_items(allotments: list[dict[str, Any]], certificates: list[dic
         {
             "item": "Section 161 / members' authority",
             "status": "Prepare / sign",
-            "note": "Confirm member approval route and signatories before issuing shares.",
+            "note": "Confirm member approval requirements and signatories before issuing shares.",
         },
         {
             "item": "Directors' allotment approval",
@@ -2127,30 +2211,33 @@ def m05_status_option(value: Any) -> str:
 
 
 def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
-    activity = m05_status_option(annual.get("company_activity_status"))
     accounts = m05_status_option(annual.get("accounts_status"))
+    activity = m05_status_option(annual.get("company_activity_status"))
     fs_type = m05_status_option(annual.get("financial_statements_type"))
-    fs_required = m05_status_option(annual.get("financial_statements_required"))
     audit_status = m05_status_option(annual.get("audit_exemption_status"))
     agm_status = m05_status_option(annual.get("agm_status"))
     agm_route = m05_status_option(annual.get("agm_route"))
-    dormant_relevant = m05_status_option(annual.get("acra_dormant_relevant_company"))
-    assets_under_500k = m05_status_option(annual.get("total_assets_under_500k"))
 
-    is_dormant = any(
-        "dormant" in value
-        for value in [activity, accounts, fs_type, audit_status, agm_status, agm_route, dormant_relevant]
-        if value
-    )
+    # Keep M05 routing intentionally simple for operations:
+    # accounts_status is the controlling field. Other fields are only fallbacks
+    # when accounts_status is blank/Auto, so advisory defaults cannot change the
+    # generated document route unexpectedly.
+    controlling_values = [accounts] if accounts and accounts != "auto" else [activity, fs_type, audit_status, agm_status, agm_route]
+    active_values = {"active", "non_dormant", "non_dormant_company", "normal", "ordinary", "unaudited", "small_company"}
+    dormant_values = {
+        "dormant",
+        "dormant_company",
+        "dormant_no_fs",
+        "dormant_no_financial_statements",
+        "dormant_financial_statements_review_required",
+    }
     audited_values = {"audited", "audit_required", "audited_accounts", "audited_financial_statements"}
-    is_audited = any(value in audited_values for value in [accounts, fs_type, audit_status] if value)
-    no_fs_required = (
-        fs_required in {"no", "not_required", "not_applicable", "n_a"}
-        or fs_type in {"dormant_no_fs", "no_fs", "no_financial_statements", "not_applicable", "n_a"}
-        or (is_dormant and dormant_relevant in {"yes", "auto", ""})
-    )
-    if fs_required in {"yes", "required"}:
-        no_fs_required = False
+    is_dormant = any(value in dormant_values for value in controlling_values if value)
+    is_audited = any(value in audited_values for value in controlling_values if value)
+    if accounts in active_values:
+        is_dormant = False
+        is_audited = False
+    no_fs_required = is_dormant
 
     agm_no_meeting_statuses = {
         "dispensed_with_agm",
@@ -2172,14 +2259,14 @@ def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
     use_written_annual_review_documents = not use_agm_meeting_documents
 
     if is_dormant:
-        accounts_label = "Dormant / no financial statements route" if no_fs_required else "Dormant / financial statements review required"
+        accounts_label = "Dormant company / no financial statements required"
     elif is_audited:
         accounts_label = "Audited financial statements"
     else:
-        accounts_label = "Unaudited / small company audit exemption"
+        accounts_label = "Active company / unaudited financial statements"
 
     if no_fs_required:
-        financial_statement_display = "Not applicable - dormant / no financial statements route"
+        financial_statement_display = "Not applicable - dormant company"
     else:
         financial_statement_display = annual.get("financial_statement_date") or annual.get("fye_date")
     fye_upper = annual.get("fye_date_upper") or annual.get("fye_date") or ""
@@ -2187,6 +2274,11 @@ def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
     agm_time = annual.get("agm_time") or ""
     agm_place = annual.get("agm_place") or ""
     financial_period = annual.get("financial_period_text") or fye_upper
+    fye_upper_bold = bold_field(fye_upper)
+    agm_date_bold = bold_field(agm_date)
+    agm_time_bold = bold_field(agm_time)
+    agm_place_bold = bold_field(agm_place)
+    financial_period_bold = bold_field(financial_period)
 
     if is_dormant and no_fs_required:
         board_accounts_title = "Dormant Status and Annual Return"
@@ -2198,10 +2290,10 @@ def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
             "RESOLVED - That any director of the Company be authorised to confirm the Company's dormant status, statutory records and Annual Return particulars "
             "for the purpose of the Annual Return and related declarations."
         )
-        agm_accounts_business = f"To note the Company's dormant status and the basis on which no financial statements are required for the financial year ended {fye_upper}."
+        agm_accounts_business = f"To note the Company's dormant status and the basis on which no financial statements are required for the financial year ended {fye_upper_bold}."
         minutes_accounts_title = "Dormant Status"
         minutes_accounts_resolution = (
-            f"RESOLVED - That the Company's dormant status for the financial year ended {fye_upper} be and is hereby noted, "
+            f"RESOLVED - That the Company's dormant status for the financial year ended {fye_upper_bold} be and is hereby noted, "
             "and that the Annual Return particulars be reviewed and approved for filing support."
         )
         audit_title = "Dormant Company / No Financial Statements Statement"
@@ -2214,12 +2306,12 @@ def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
         audit_c = "c) the accounting and statutory records required to be kept by the Company have been maintained or reviewed for Annual Return purposes; and"
         audit_d = "d) the directors remain responsible for confirming the Company's dormant status and any applicable statutory exemption before the Annual Return is lodged."
         mrl_title = "DORMANT COMPANY REPRESENTATION"
-        mrl_intro = f"We confirm, to the best of our knowledge and belief, the following matters for the financial period ended {fye_upper}:"
+        mrl_intro = f"We confirm, to the best of our knowledge and belief, the following matters for the financial period ended {fye_upper_bold}:"
         mrl_lines = [
             "1. The Company was dormant for the relevant financial year, subject to final review against its accounting records and bank activity.",
             "2. No business activity, income-generating transaction or material accounting transaction has been identified for the relevant year, except as disclosed to the preparer.",
             "3. The Company's statutory records, registers and accounting records have been maintained or made available for Annual Return review.",
-            "4. The directors have reviewed whether the Company qualifies for the applicable dormant company / no financial statements route.",
+            "4. The directors have reviewed whether the Company qualifies as a dormant company for which financial statements are not required.",
             "5. The Company has no undisclosed assets, liabilities, contingent liabilities, guarantees, commitments or subsequent events requiring disclosure.",
             "6. The Annual Return information and supporting particulars provided for filing are complete and accurate to the best of our knowledge.",
             "7. The directors understand that ACRA and IRAS dormant status should be reviewed separately where applicable.",
@@ -2227,17 +2319,17 @@ def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
     elif is_audited:
         board_accounts_title = "Audited Financial Statements"
         board_accounts_resolution_1 = (
-            f"RESOLVED - That the audited financial statements of the Company for the financial year ended {fye_upper}, together with the auditor's report, "
+            f"RESOLVED - That the audited financial statements of the Company for the financial year ended {fye_upper_bold}, together with the auditor's report, "
             "be and are hereby approved for submission to the members of the Company."
         )
         board_accounts_resolution_2 = (
             "RESOLVED - That any director of the Company be authorised to make such amendments to the audited financial statements and related reports "
             "as may be necessary or desirable, provided that such amendments are not inconsistent with the records approved by the Board."
         )
-        agm_accounts_business = f"To receive and consider the audited financial statements of the Company and the auditor's report for the financial year ended {fye_upper}."
+        agm_accounts_business = f"To receive and consider the audited financial statements of the Company and the auditor's report for the financial year ended {fye_upper_bold}."
         minutes_accounts_title = "Audited Financial Statements"
         minutes_accounts_resolution = (
-            f"RESOLVED - That the audited financial statements of the Company for the financial year ended {fye_upper}, together with the auditor's report, "
+            f"RESOLVED - That the audited financial statements of the Company for the financial year ended {fye_upper_bold}, together with the auditor's report, "
             "be and are hereby received and adopted."
         )
         audit_title = "AUDITED ACCOUNTS REVIEW STATEMENT"
@@ -2247,7 +2339,7 @@ def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
         audit_c = "c) the auditor's report, financial statements and Annual Return particulars should be checked against the Company's records before filing; and"
         audit_d = "d) any auditor appointment, re-appointment or resignation matter should be reviewed separately where applicable."
         mrl_title = "MANAGEMENT REPRESENTATION"
-        mrl_intro = f"We confirm, to the best of our knowledge and belief, the following matters for the financial period ended {fye_upper}:"
+        mrl_intro = f"We confirm, to the best of our knowledge and belief, the following matters for the financial period ended {fye_upper_bold}:"
         mrl_lines = [
             "1. The financial statements and supporting schedules have been prepared from the Company's accounting records and information provided to the preparer and/or auditor.",
             "2. All assets, liabilities, contingent liabilities, guarantees, commitments and material transactions have been recorded or disclosed.",
@@ -2261,29 +2353,29 @@ def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
         board_accounts_title = "Report of the Directors and Financial Statements"
         board_accounts_resolution_1 = (
             "RESOLVED - That the report of the directors and the financial statements of the Company for the financial year ended "
-            f"{fye_upper} be and are hereby approved and signed for submission to the members of the Company."
+            f"{fye_upper_bold} be and are hereby approved and signed for submission to the members of the Company."
         )
         board_accounts_resolution_2 = (
             "RESOLVED - That any director of the Company be authorised to make such amendments to the report of the directors and financial statements "
             "as may be necessary or desirable, provided that such amendments are not inconsistent with the records approved by the Board."
         )
-        agm_accounts_business = f"To receive and consider the report of the directors and the financial statements of the Company for the financial year ended {fye_upper}."
+        agm_accounts_business = f"To receive and consider the report of the directors and the financial statements of the Company for the financial year ended {fye_upper_bold}."
         minutes_accounts_title = "Report of the Directors and Financial Statements"
         minutes_accounts_resolution = (
             "RESOLVED - That the report of the directors and the financial statements of the Company for the financial year ended "
-            f"{fye_upper} be and are hereby received and adopted."
+            f"{fye_upper_bold} be and are hereby received and adopted."
         )
         audit_title = "STATEMENT BY A SMALL COMPANY EXEMPT FROM AUDIT REQUIREMENTS"
         audit_intro = "I/We, the undermentioned director(s) of the Company, hereby state and declare that:"
         audit_a = (
-            f"a) for the financial period {financial_period}, the Company qualifies, or is expected to qualify based on the information "
+            f"a) for the financial period {financial_period_bold}, the Company qualifies, or is expected to qualify based on the information "
             "provided, as a small company under Section 205C of the Companies Act 1967 read with the Thirteenth Schedule;"
         )
         audit_b = "b) no notice has been received from any member requiring the Company to obtain an audit of its financial statements for the said financial year;"
         audit_c = "c) the accounting and other records required to be kept by the Company under Section 199 of the Companies Act 1967 have been kept; and"
         audit_d = "d) this statement is made for the purpose of the Annual Return and any related declaration required under the Companies Act 1967."
         mrl_title = "MANAGEMENT REPRESENTATION"
-        mrl_intro = f"We confirm, to the best of our knowledge and belief, the following matters for the financial period ended {fye_upper}:"
+        mrl_intro = f"We confirm, to the best of our knowledge and belief, the following matters for the financial period ended {fye_upper_bold}:"
         mrl_lines = [
             "1. The financial statements have been prepared from the Company's accounting records and information provided to the preparer.",
             "2. All assets, liabilities, contingent liabilities, guarantees, commitments and material transactions have been recorded or disclosed.",
@@ -2295,20 +2387,20 @@ def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
         ]
 
     if use_agm_meeting_documents:
-        agm_mode_label = "AGM held / ordinary AGM route"
+        agm_mode_label = "Annual General Meeting held"
         board_meeting_resolution = (
-            f"RESOLVED - That an Annual General Meeting of the Company be convened and held on {agm_date} at {agm_time} "
-            f"at {agm_place}, or at such other place, date and time as may be agreed by the directors and members."
+            f"RESOLVED - That an Annual General Meeting of the Company be convened and held on {agm_date_bold} at {agm_time_bold} "
+            f"at {agm_place_bold}, or at such other place, date and time as may be agreed by the directors and members."
         )
         board_documents_resolution = (
             "RESOLVED - That the notice of Annual General Meeting, agenda, agreement to shorter notice, proxy form, attendance sheet and minutes "
             "prepared in connection with the Annual General Meeting be and are hereby approved."
         )
     else:
-        agm_mode_label = "AGM exempt / dispensed / written annual review route"
+        agm_mode_label = "AGM exempted or dispensed; written annual review"
         board_meeting_resolution = (
             "RESOLVED - That, subject to the Company satisfying the applicable statutory requirements and member approvals, the annual review matters "
-            "may be dealt with by written resolutions, member consent or the applicable AGM exemption route instead of a physical Annual General Meeting."
+            "may be dealt with by written resolutions, member consent or the applicable exemption from holding an Annual General Meeting."
         )
         board_documents_resolution = (
             "RESOLVED - That the written annual review resolutions, member consent, Annual Return authorisation and related declarations prepared for the Company "
@@ -2317,8 +2409,8 @@ def m05_status_profile(annual: dict[str, Any]) -> dict[str, Any]:
 
     written_resolution_title = "MEMBERS' WRITTEN RESOLUTION / CONSENT"
     written_resolution_body = (
-        f"The undersigned member(s) of the Company confirm that the annual review matters for the financial year ended {fye_upper} "
-        "may be dealt with by written resolution, member consent or the applicable AGM exemption route, subject to final statutory review."
+        f"The undersigned member(s) of the Company confirm that the annual review matters for the financial year ended {fye_upper_bold} "
+        "may be dealt with by written resolution, member consent or the applicable exemption from holding an Annual General Meeting, subject to final statutory review."
     )
     written_resolution_accounts = minutes_accounts_resolution.replace("RESOLVED - ", "")
 
@@ -2436,11 +2528,11 @@ def m05_manual_review_flags(annual: dict[str, Any], company: dict[str, Any], dir
     if not member_signers or not clean(member_signers[0].get("full_name")):
         flags.append("Member/shareholder signer is blank.")
     if annual.get("is_dormant"):
-        flags.append("Dormant company route selected; confirm ACRA dormant relevant company status and IRAS dormant/tax waiver status separately.")
+        flags.append("Dormant company status selected; confirm ACRA dormant relevant company status and IRAS dormant/tax waiver status separately.")
         if m05_status_option(annual.get("total_assets_under_500k")) not in {"yes", "auto"}:
             flags.append("Dormant AGM exemption may depend on asset threshold; confirm whether total assets are not more than S$500,000.")
     if annual.get("is_audited"):
-        flags.append("Audited accounts route selected; check auditor information and do not use the small company audit exemption statement unless separately confirmed.")
+        flags.append("Audited financial statements selected; check auditor information and do not use the small company audit exemption statement unless separately confirmed.")
     if clean(annual.get("audit_exemption_status")) and m05_status_option(annual.get("audit_exemption_status")) in {"manual", "manual_review"}:
         flags.append("Audit exemption status is marked manual review.")
     if clean(annual.get("agm_status")) and m05_status_option(annual.get("agm_status")) in {"manual", "manual_review"}:
@@ -2452,11 +2544,11 @@ def m05_checklist_items(annual: dict[str, Any], flags: list[str]) -> list[dict[s
     items = [
         {"item": "FYE and financial statements", "status": "Review", "note": f"FYE: {annual.get('fye_date') or '-'}; financial statements: {annual.get('financial_statement_date_display') or '-'}."},
         {"item": "Accounts / activity status", "status": "Review", "note": annual.get("accounts_status_label") or annual.get("accounts_status") or "-"},
-        {"item": "AGM route", "status": "Review", "note": annual.get("agm_mode_label") or annual.get("agm_route") or "-"},
-        {"item": "AGM documents", "status": "Prepare / sign", "note": f"AGM date/time: {annual.get('agm_date') or '-'} at {annual.get('agm_time') or '-'}." if annual.get("use_agm_meeting_documents") else "AGM meeting documents are replaced by written annual review / member consent route."},
-        {"item": "Shorter notice consent", "status": "Prepare / sign" if annual.get("use_agm_meeting_documents") else "Not applicable / review", "note": "Generated as part of the AGM package." if annual.get("use_agm_meeting_documents") else "Not generated when AGM is exempt, dispensed or replaced by written annual review route."},
+        {"item": "Annual review method", "status": "Review", "note": annual.get("agm_mode_label") or annual.get("agm_route") or "-"},
+        {"item": "AGM documents", "status": "Prepare / sign", "note": f"AGM date/time: {annual.get('agm_date') or '-'} at {annual.get('agm_time') or '-'}." if annual.get("use_agm_meeting_documents") else "AGM meeting documents are replaced by written annual review / member consent documents."},
+        {"item": "Shorter notice consent", "status": "Prepare / sign" if annual.get("use_agm_meeting_documents") else "Not applicable / review", "note": "Generated as part of the AGM package." if annual.get("use_agm_meeting_documents") else "Not generated when AGM is exempted, dispensed or replaced by written annual review documents."},
         {"item": "Annual Return authorisation", "status": "Prepare / sign", "note": "Authorises preparation/lodgement support; final ACRA / BizFile filing requires manual review."},
-        {"item": "Audit / dormant statement", "status": "Review", "note": annual.get("audit_statement_title") or "Confirm audit exemption / dormant route against statutory records."},
+        {"item": "Audit / dormant statement", "status": "Review", "note": annual.get("audit_statement_title") or "Confirm audit exemption or dormant company status against statutory records."},
         {"item": "Management representation", "status": "Prepare / sign", "note": f"Setting: {annual.get('management_rep_letter') or 'Yes'}."},
     ]
     for flag in flags:
@@ -2655,10 +2747,10 @@ def build_context(parsed: dict[str, Any]) -> dict[str, Any]:
     company["share_par_value"] = company["amount_paid_per_share"]
     company["share_payment_review_note"] = "Manual review: partly paid shares / unpaid share capital." if total_unpaid > 0 else ""
     company["shareholder_signature_blocks"] = "\n\n".join(
-        f"----------------------------------------\n{row.get('shareholder_name', '')}\nAllottee / Shareholder" for row in shareholders
+        f"----------------------------------------\n{bold_field(row.get('shareholder_name', ''))}\n{bold_field('Allottee / Shareholder')}" for row in shareholders
     )
     company["director_signature_blocks"] = "\n\n".join(
-        f"Signature: ______________________________\nName: {p.get('full_name', '')}\nCapacity: Director" for p in directors
+        f"Signature: ______________________________\nName: {bold_field(p.get('full_name', ''))}\nCapacity: {bold_field('Director')}" for p in directors
     )
     company["first_directors_names"] = ", ".join(p.get("full_name", "") for p in directors if p.get("full_name"))
     company["subscriber_share_lines"] = "\n".join(
@@ -2914,12 +3006,12 @@ def normalize_shareholder(raw: dict[str, Any], people: list[dict[str, Any]], com
     share_class = item.get("share_class") or company.get("share_class") or "Ordinary"
     paid_status_text = "fully paid" if unpaid <= 0 else f"paid up to {currency} {paid_per_share} per share, with {currency} {due_per_share} unpaid per share"
     form24_allotment_text = (
-        f"{format_number(shares)} {share_class} Shares\n"
-        f"Issued share capital: {currency} {format_money_number(issued)}\n"
-        f"Paid-up share capital: {currency} {format_money_number(paid)}"
+        f"{bold_field(format_number(shares))} {bold_field(share_class)} Shares\n"
+        f"Issued share capital: {bold_field(f'{currency} {format_money_number(issued)}')}\n"
+        f"Paid-up share capital: {bold_field(f'{currency} {format_money_number(paid)}')}"
     )
     if unpaid > 0:
-        form24_allotment_text += f"\nUnpaid share capital: {currency} {format_money_number(unpaid)}"
+        form24_allotment_text += f"\nUnpaid share capital: {bold_field(f'{currency} {format_money_number(unpaid)}')}"
     return {
         **item,
         "is_corporate": "Yes" if is_corporate else "",
@@ -3197,48 +3289,167 @@ def render_paragraph(paragraph, context: dict[str, Any]) -> None:
     text = paragraph.text
     if "{{" not in text and "{%" not in text:
         return
-    rendered = render_text(text, context)
-    if rendered == text:
+    segments = render_text_segments(text, context)
+    rendered = "".join(part for part, _ in segments)
+    if rendered == text and not any(is_field for _, is_field in segments):
         return
     first = paragraph.runs[0] if paragraph.runs else None
     paragraph.clear()
-    run = paragraph.add_run(rendered)
-    if first is not None:
-        run.bold = first.bold
-        run.italic = first.italic
-        run.underline = first.underline
-        if first.font.name:
-            run.font.name = first.font.name
-        if first.font.size:
-            run.font.size = first.font.size
-        if first.font.color and first.font.color.rgb:
-            run.font.color.rgb = first.font.color.rgb
+    for part, is_field in segments:
+        if not part:
+            continue
+        run = paragraph.add_run(part)
+        apply_run_template_style(run, first)
+        if is_field:
+            run.bold = True
+
+
+def apply_run_template_style(run, template_run) -> None:
+    if template_run is None:
+        return
+    run.bold = template_run.bold
+    run.italic = template_run.italic
+    run.underline = template_run.underline
+    if template_run.font.name:
+        run.font.name = template_run.font.name
+    if template_run.font.size:
+        run.font.size = template_run.font.size
+    if template_run.font.color and template_run.font.color.rgb:
+        run.font.color.rgb = template_run.font.color.rgb
 
 
 LOOP_RE = re.compile(r"{%\s*for\s+(\w+)\s+in\s+([\w.]+)\s*%}(.*?){%\s*endfor\s*%}", re.DOTALL)
 VAR_RE = re.compile(r"{{\s*([^{}]+?)\s*}}")
+BOLD_FIELD_START = "[[B]]"
+BOLD_FIELD_END = "[[/B]]"
+BOLD_FIELD_MARKER_RE = re.compile(r"\[\[/?B\]\]")
 
 
 def render_text(text: str, context: dict[str, Any]) -> str:
-    def loop_repl(match: re.Match[str]) -> str:
-        var_name, list_expr, body = match.groups()
-        rows = resolve(context, list_expr)
-        if not isinstance(rows, list):
-            return ""
-        parts = []
-        for row in rows:
-            child = dict(context)
-            child[var_name] = row
-            parts.append(render_text(body, child))
-        return "".join(parts)
+    return "".join(part for part, _ in render_text_segments(text, context))
 
-    previous = None
-    while previous != text:
-        previous = text
-        text = LOOP_RE.sub(loop_repl, text)
+
+def render_text_segments(text: str, context: dict[str, Any]) -> list[tuple[str, bool]]:
     text = ROW_LOOP_START_RE.sub("", text)
     text = ROW_LOOP_END_RE.sub("", text)
-    return VAR_RE.sub(lambda m: str(resolve(context, m.group(1).strip()) or ""), text)
+    if LOOP_RE.search(text):
+        segments: list[tuple[str, bool]] = []
+        pos = 0
+        for match in LOOP_RE.finditer(text):
+            if match.start() > pos:
+                segments.extend(render_text_segments(text[pos : match.start()], context))
+            var_name, list_expr, body = match.groups()
+            rows = resolve(context, list_expr)
+            if isinstance(rows, list):
+                for row in rows:
+                    child = dict(context)
+                    child[var_name] = row
+                    segments.extend(render_text_segments(body, child))
+            pos = match.end()
+        if pos < len(text):
+            segments.extend(render_text_segments(text[pos:], context))
+        return merge_text_segments(segments)
+
+    segments: list[tuple[str, bool]] = []
+    pos = 0
+    for match in VAR_RE.finditer(text):
+        if match.start() > pos:
+            append_marked_segments(segments, text[pos : match.start()], False)
+        expr = match.group(1).strip()
+        value = str(resolve(context, expr) or "")
+        visible_value = strip_bold_field_markers(value)
+        append_marked_segments(segments, value, should_bold_rendered_field(expr, visible_value))
+        pos = match.end()
+    if pos < len(text):
+        append_marked_segments(segments, text[pos:], False)
+    return merge_text_segments(segments)
+
+
+def append_marked_segments(segments: list[tuple[str, bool]], text: str, default_bold: bool) -> None:
+    if not text:
+        return
+    pos = 0
+    current_bold = default_bold
+    for match in BOLD_FIELD_MARKER_RE.finditer(text):
+        if match.start() > pos:
+            segments.append((text[pos : match.start()], current_bold))
+        current_bold = match.group(0) == BOLD_FIELD_START or default_bold
+        pos = match.end()
+    if pos < len(text):
+        segments.append((text[pos:], current_bold))
+
+
+def strip_bold_field_markers(value: str) -> str:
+    return value.replace(BOLD_FIELD_START, "").replace(BOLD_FIELD_END, "")
+
+
+def bold_field(value: Any) -> str:
+    text = str(value or "")
+    if not text:
+        return ""
+    return f"{BOLD_FIELD_START}{text}{BOLD_FIELD_END}"
+
+
+def merge_text_segments(segments: list[tuple[str, bool]]) -> list[tuple[str, bool]]:
+    merged: list[tuple[str, bool]] = []
+    for text, is_field in segments:
+        if not text:
+            continue
+        if merged and merged[-1][1] == is_field:
+            merged[-1] = (merged[-1][0] + text, is_field)
+        else:
+            merged.append((text, is_field))
+    return merged
+
+
+def should_bold_rendered_field(expr: str, value: str) -> bool:
+    if not value.strip():
+        return False
+    key = expr.strip().lower()
+    name = key.rsplit(".", 1)[-1]
+    words = re.findall(r"\w+", value)
+    short_value = len(words) <= 12 and "\n" not in value and not value.lstrip().upper().startswith(("RESOLVED", "NOTED"))
+    value_field_markers = (
+        "date",
+        "amount",
+        "capital",
+        "share",
+        "shares",
+        "certificate",
+        "currency",
+        "uen",
+        "number",
+    )
+    if short_value and not any(marker in name for marker in ("line", "block", "blocks")) and any(marker in name for marker in value_field_markers):
+        return True
+    generated_text_markers = (
+        "resolution",
+        "statement",
+        "representation",
+        "business",
+        "intro",
+        "body",
+        "title",
+        "block",
+        "blocks",
+        "line",
+        "lines",
+        "note",
+        "notes",
+        "remark",
+        "remarks",
+        "summary",
+        "description",
+        "declaration",
+        "clause",
+    )
+    if any(marker in name for marker in generated_text_markers):
+        return False
+    if len(words) > 12 and any(mark in value for mark in [".", ";", ":"]):
+        return False
+    if value.lstrip().upper().startswith(("RESOLVED", "NOTED")):
+        return False
+    return True
 
 
 def resolve(context: dict[str, Any], expr: str) -> Any:

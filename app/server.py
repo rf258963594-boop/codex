@@ -575,8 +575,10 @@ class App(BaseHTTPRequestHandler):
               const input = document.getElementById("main-upload-input");
               const hint = document.getElementById("main-upload-hint");
               if (!form || !dropzone || !input || !hint) return;
+              let uploading = false;
 
-              const submitIfReady = () => {{
+              const uploadIfReady = async () => {{
+                if (uploading) return;
                 if (!input.files || input.files.length === 0) return;
                 const file = input.files[0];
                 if (!file.name.toLowerCase().endsWith(".xlsx")) {{
@@ -587,10 +589,27 @@ class App(BaseHTTPRequestHandler):
                 hint.textContent = "正在上传：" + file.name;
                 dropzone.classList.remove("upload-invalid");
                 dropzone.classList.add("upload-selected");
-                form.requestSubmit();
+                uploading = true;
+                try {{
+                  const response = await fetch(form.action, {{
+                    method: "POST",
+                    body: new FormData(form),
+                    credentials: "same-origin",
+                  }});
+                  if (!response.ok) throw new Error("HTTP " + response.status);
+                  window.location.href = response.url || "/jobs";
+                }} catch (error) {{
+                  hint.textContent = "上传失败，请确认本地服务正在运行后重试。";
+                  dropzone.classList.add("upload-invalid");
+                  uploading = false;
+                }}
               }};
 
-              input.addEventListener("change", submitIfReady);
+              form.addEventListener("submit", (event) => {{
+                event.preventDefault();
+                uploadIfReady();
+              }});
+              input.addEventListener("change", uploadIfReady);
               ["dragenter", "dragover"].forEach((eventName) => {{
                 dropzone.addEventListener(eventName, (event) => {{
                   event.preventDefault();
@@ -607,7 +626,7 @@ class App(BaseHTTPRequestHandler):
                 const files = event.dataTransfer && event.dataTransfer.files;
                 if (!files || files.length === 0) return;
                 input.files = files;
-                submitIfReady();
+                uploadIfReady();
               }});
             }})();
           </script>
@@ -754,13 +773,13 @@ class App(BaseHTTPRequestHandler):
               <label class="check wide"><input type="checkbox" name="annual_review_required" value="1"> 生成年审包</label>
               <label>FYE<input name="fye_date" type="date"></label>
               <label>AGM / 年审文件日期<input name="agm_date" type="date"></label>
-              <label>AGM 路线<select name="agm_route">
+              <label>年审方式<select name="agm_route">
                 <option value="ordinary_agm">普通 AGM</option>
                 <option value="written_resolution">书面年审 / 股东书面决议</option>
                 <option value="exempt_or_dispensed">AGM 豁免 / dispense</option>
               </select></label>
               <label>财报状态<select name="accounts_status">
-                <option value="non_dormant">非休眠 / 常规小公司</option>
+                <option value="active">活跃 / 普通年审</option>
                 <option value="dormant">休眠</option>
                 <option value="audited">已审计</option>
               </select></label>
@@ -1194,7 +1213,7 @@ class App(BaseHTTPRequestHandler):
                 <div><strong>转入文件包</strong><span>内部编号 M02，已按两份签字 PDF 生成。</span></div>
                 <div><strong>股份转让包</strong><span>内部编号 M03，已生成转股决议、Instrument、股权证书、Register 更新和内部清单。</span></div>
                 <div><strong>增资配股包</strong><span>内部编号 M04，已生成授权、配股、申请书、证书、Form 24 和 Register 更新。</span></div>
-                <div><strong>年审文件包</strong><span>内部编号 M05，已生成 AGM、AR 授权和复核清单。</span></div>
+                <div><strong>年审文件包</strong><span>内部编号 M05，已生成合并签署包和独立内部复核清单。</span></div>
               </div>
             </div>
           </section>

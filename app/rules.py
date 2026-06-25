@@ -456,7 +456,7 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
                 file_item("Management Representation Letter", "管理层声明或休眠公司声明", "董事签署", text(annual.get("management_rep_letter")) or "Auto", manual_review=True, package="年审包", doc_type="MRL"),
             ]
         )
-        preview.append(preview_item("年审包", 1, "AGM/书面年审/Annual Return 文件包", f"FYE: {fye or '-'}；AGM: {text(annual.get('agm_date')) or '-'}；状态: {text(annual.get('accounts_status')) or 'default'} / {text(annual.get('agm_status')) or text(annual.get('agm_route')) or 'ordinary_agm'}"))
+        preview.append(preview_item("年审包", 1, "合并签署 PDF + 独立内部复核清单", f"FYE: {fye or '-'}；AGM: {text(annual.get('agm_date')) or '-'}；状态: {text(annual.get('accounts_status')) or 'default'} / {text(annual.get('agm_status')) or text(annual.get('agm_route')) or 'ordinary_agm'}"))
 
     if high_risk_items:
         warnings.append("以下事项建议人工复核后再生成正式文件：" + "、".join(dedupe(high_risk_items)))

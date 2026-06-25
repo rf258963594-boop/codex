@@ -100,7 +100,7 @@ def add_directors_resolution(doc: Document) -> None:
     clause_title(doc, "{{m05.board_accounts_title}}")
     clause_para(doc, "{{m05.board_accounts_resolution_1}}")
     clause_para(doc, "{{m05.board_accounts_resolution_2}}")
-    clause_title(doc, "Annual Review Route")
+    clause_title(doc, "Annual Review Method")
     clause_para(doc, "{{m05.board_meeting_resolution}}")
     clause_para(doc, "{{m05.board_documents_resolution}}")
     clause_title(doc, "Annual Return and Statutory Declarations")
@@ -205,7 +205,7 @@ def add_attendance_and_minutes(doc: Document) -> None:
     )
     clause_title(doc, "{{m05.minutes_accounts_title}}")
     clause_para(doc, "{{m05.minutes_accounts_resolution}}")
-    clause_title(doc, "Audit / Dormant Status Review")
+    clause_title(doc, "Accounts / Audit Status Review")
     clause_para(doc, "{{m05.audit_statement_a}}")
     clause_title(doc, "Directors' Fees and Remuneration")
     clause_para(doc, "{{m05.directors_fee_text}}")
@@ -236,7 +236,7 @@ def add_written_annual_review_documents(doc: Document) -> None:
         "RESOLVED - That {{m05.ar_signer_name}}, acting as {{m05.ar_signer_capacity}}, be authorised to sign and lodge the Annual Return "
         "and related declarations with ACRA / BizFile for the financial year ended {{m05.fye_date_upper}}."
     )
-    clause_title(doc, "Audit / Dormant Status")
+    clause_title(doc, "Accounts / Audit Status")
     clause_para(doc, "{{m05.audit_statement_a}}")
     add_para(doc, "Dated this {{signature.day_ordinal}} day of {{signature.month_year}}", style="Signature Block", before=12, after=10)
     add_signature_rows(doc, "m05.member_signature_rows", "MEMBER(S)")
@@ -388,7 +388,7 @@ def build_checklist() -> Document:
     add_company_header(doc, "ANNUAL REVIEW INTERNAL CHECKLIST")
     add_table(
         doc,
-        ["FYE", "AGM date", "AGM route", "Accounts status"],
+        ["FYE", "AGM date", "Annual review method", "Accounts status"],
         [["{{m05.fye_date}}", "{{m05.agm_date}}", "{{m05.agm_mode_label}}", "{{m05.accounts_status_label}}"]],
         [1800, 1800, 2500, 2260],
     )
@@ -410,13 +410,13 @@ M05 is the annual review / AGM / Annual Return authorisation package for an exis
 
 ## Rebuild note
 
-Version P2_M05_v0.3 adds annual review status routing. Dormant, audited, no-financial-statements and AGM-exempt/dispensed routes now change the document wording instead of using one ordinary AGM template for every case.
+Version P2_M05_v0.3 uses a simplified annual review status model. The main `accounts_status` values are `active`, `dormant` and `audited`; older `non_dormant` / `unaudited` values are treated as active for compatibility.
 
 ## Generated PDFs
 
 | File | Content | Main signer |
 |---|---|---|
-| AGM documents package | Directors' written resolutions plus either AGM documents or written annual review / member consent route | Directors, member(s), chairperson |
+| AGM documents package | Directors' written resolutions plus either AGM documents or written annual review / member consent documents | Directors, member(s), chairperson |
 | Annual Return authorisation package | Annual Return review summary, Section 197 certificate, dynamic audit/dormant/audited statement, AR filing authorisation, management representation | Director(s) / authorised signer |
 | Internal checklist | Filing and review checklist | Internal only |
 
@@ -430,10 +430,11 @@ Version P2_M05_v0.3 adds annual review status routing. Dormant, audited, no-fina
 | `agm_time` | Quick Annual Review; defaults to 10.00 a.m. |
 | `agm_place` | Quick Annual Review; defaults to registered office |
 | `financial_statement_date` | Quick Annual Review; defaults to FYE |
-| `company_activity_status` | Active / Dormant; affects dormant wording |
-| `financial_statements_type` | Auto / Unaudited / Audited / Dormant no FS / Management accounts |
-| `financial_statements_required` | Auto / Yes / No |
-| `audit_exemption_status` | Auto / Small company exempt / Audited / Dormant relevant / Manual review |
+| `accounts_status` | active / dormant / audited |
+| `company_activity_status` | Optional compatibility field; normally leave blank / Active |
+| `financial_statements_type` | Optional compatibility field; normally leave blank / Auto |
+| `financial_statements_required` | Optional compatibility field; normally leave blank / Auto |
+| `audit_exemption_status` | Optional compatibility field; normally leave blank / Auto |
 | `agm_status` | Auto / Held AGM / Dispensed with AGM / Exempt from AGM / Written resolutions |
 | `acra_dormant_relevant_company` | Auto / Yes / No |
 | `total_assets_under_500k` | Auto / Yes / No |

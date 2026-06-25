@@ -17,6 +17,51 @@ def file_uri(path: Path) -> str:
     return path.resolve().as_uri()
 
 
+def libreoffice_env() -> dict[str, str]:
+    env = os.environ.copy()
+    # Use LibreOffice's headless VCL plugin and disable GPU probing. This makes
+    # conversion less likely to block on desktop/printer integration.
+    env.setdefault("SAL_USE_VCLPLUGIN", "svp")
+    env.setdefault("SAL_DISABLE_OPENCL", "1")
+    return env
+
+
+def kill_process_tree(proc: subprocess.Popen) -> None:
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        return
+    proc.kill()
+
+
+def run_soffice(cmd: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+    creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=libreoffice_env(),
+        creationflags=creationflags,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        kill_process_tree(proc)
+        stdout, stderr = proc.communicate()
+        raise TimeoutError(
+            "LibreOffice conversion timed out. On Windows this is often caused "
+            "by an unavailable default/network printer; set a local printer such "
+            "as Microsoft Print to PDF as the default printer, then retry."
+        ) from exc
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+
+
 def ensure_libreoffice() -> Path:
     if not SOFFICE_PATH.exists():
         raise FileNotFoundError(
@@ -28,9 +73,18 @@ def ensure_libreoffice() -> Path:
         str(SOFFICE_PATH),
         f"-env:UserInstallation={file_uri(LIBREOFFICE_PROFILE_DIR)}",
         "--headless",
+        "--invisible",
+        "--nologo",
+        "--nodefault",
+        "--nocrashreport",
         "--terminate_after_init",
     ]
-    subprocess.run(init_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        run_soffice(init_cmd, timeout=30)
+    except TimeoutError:
+        # The actual conversion path will surface a more specific error. Do not
+        # fail application startup because the profile warm-up was blocked.
+        pass
     return SOFFICE_PATH
 
 
@@ -46,6 +100,7 @@ def convert_docx_to_pdf(docx_path: Path, out_dir: Path) -> Path:
         "--nofirststartwizard",
         "--norestore",
         "--nodefault",
+        "--nocrashreport",
         "--nolockcheck",
         "--convert-to",
         "pdf:writer_pdf_Export",
@@ -53,7 +108,7 @@ def convert_docx_to_pdf(docx_path: Path, out_dir: Path) -> Path:
         str(out_dir.resolve()),
         str(docx_path.resolve()),
     ]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
+    proc = run_soffice(cmd, timeout=120)
     pdf_path = out_dir / f"{docx_path.stem}.pdf"
     if proc.returncode != 0 or not pdf_path.exists():
         raise RuntimeError(

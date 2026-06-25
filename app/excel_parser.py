@@ -479,7 +479,7 @@ def normalize_quick_annual_review(company: dict[str, Any], fields: dict[str, Any
         "agm_time": annual_quick.get("agm_time") or "10.00 a.m.",
         "agm_place": annual_quick.get("agm_place") or company.get("registered_office_address", ""),
         "agm_route": annual_quick.get("agm_route") or fields.get("agm_route") or "ordinary_agm",
-        "accounts_status": annual_quick.get("accounts_status") or "non_dormant",
+        "accounts_status": annual_quick.get("accounts_status") or "active",
         "company_activity_status": annual_quick.get("company_activity_status") or fields.get("company_activity_status", ""),
         "financial_statements_type": annual_quick.get("financial_statements_type") or fields.get("financial_statements_type", ""),
         "financial_statements_required": annual_quick.get("financial_statements_required") or fields.get("financial_statements_required", ""),

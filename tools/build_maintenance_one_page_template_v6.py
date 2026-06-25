@@ -81,8 +81,8 @@ ANNUAL_FIELDS = [
     ("AGM 日期", "AGM date", "agm_date", "", "建议填", "留空后续可由系统按规则推定。"),
     ("AGM 时间", "AGM time", "agm_time", "10.00 a.m.", "默认", "通常不用改。"),
     ("AGM 地点", "AGM place", "agm_place", "", "默认注册地址", "留空默认当前注册地址。"),
-    ("年审方式", "AGM route", "agm_route", "ordinary_agm", "默认", "ordinary_agm / exempt_private_company / dormant_company / manual。"),
-    ("财报状态", "Accounts status", "accounts_status", "non_dormant", "常用", "non_dormant / dormant / unaudited / audited。"),
+    ("年审方式", "Annual review method", "agm_route", "ordinary_agm", "默认", "ordinary_agm / exempt_private_company / dormant_company / manual。"),
+    ("财报状态", "Accounts status", "accounts_status", "active", "常用", "active / dormant / audited；通常填 active，休眠才填 dormant，已审计才填 audited。"),
     ("公司活动状态", "Company activity status", "company_activity_status", "Active", "默认", "Active / Dormant；留空按 Active。"),
     ("是否 ACRA 休眠相关公司", "ACRA dormant relevant company", "acra_dormant_relevant_company", "Auto", "默认 Auto", "Auto / Yes / No；休眠公司会影响是否需要财报。"),
     ("资产是否不超过 50 万", "Total assets under S$500k", "total_assets_under_500k", "Auto", "默认 Auto", "Auto / Yes / No；用于判断 dormant AGM exemption 风险。"),
@@ -456,7 +456,7 @@ def build_annual_sheet(wb: Workbook, sample: bool) -> None:
         "annual_review_required": "Yes",
         "fye_date": "31/12/2025",
         "agm_date": "30/06/2026",
-        "accounts_status": "unaudited",
+        "accounts_status": "active",
         "company_activity_status": "Active",
         "financial_statements_type": "Unaudited",
         "financial_statements_required": "Yes",
@@ -486,7 +486,7 @@ def build_annual_sheet(wb: Workbook, sample: bool) -> None:
         cell.alignment = WRAP
     add_kv_validation(ws, "annual_review_required", YES_NO)
     add_kv_validation(ws, "agm_route", '"ordinary_agm,exempt_private_company,dormant_company,written_resolutions,manual"')
-    add_kv_validation(ws, "accounts_status", '"non_dormant,dormant,unaudited,audited,manual"')
+    add_kv_validation(ws, "accounts_status", '"active,dormant,audited"')
     add_kv_validation(ws, "company_activity_status", '"Active,Dormant"')
     add_kv_validation(ws, "acra_dormant_relevant_company", YES_NO)
     add_kv_validation(ws, "total_assets_under_500k", YES_NO)
