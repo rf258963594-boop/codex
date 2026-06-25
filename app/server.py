@@ -196,6 +196,14 @@ DOCUMENT_TEMPLATES = {
         "path": DOC_TEMPLATE_DIR / "p1_standard_v3_part1" / "08_rorc_notice_controller_standard.docx",
         "note": "每名控制人一份",
     },
+    "p1_register_members": {
+        "category": "注册 P1",
+        "name": "Register of Members",
+        "version": "v1.0",
+        "status": "启用",
+        "path": DOC_TEMPLATE_DIR / "p1_standard_v3_part1" / "09_register_of_members_standard.docx",
+        "note": "注册后的初始股东名册",
+    },
     "p2_m01_ordinary_dr": {
         "category": "变更 P2",
         "name": "普通董事决议",
@@ -252,6 +260,14 @@ DOCUMENT_TEMPLATES = {
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M03_register_and_stamp_duty_checklist_standard.docx",
         "note": "内部复核清单，内部编号 M03",
     },
+    "p2_m03_register_members": {
+        "category": "变更 P2",
+        "name": "M03 Register of Members Update",
+        "version": "v0.1",
+        "status": "启用",
+        "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M03_register_of_members_update_standard.docx",
+        "note": "股份转让后的成员名册更新记录，内部编号 M03",
+    },
     "p2_m04_authority": {
         "category": "变更 P2",
         "name": "M04 S161 / 股东授权",
@@ -299,6 +315,14 @@ DOCUMENT_TEMPLATES = {
         "status": "启用",
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M04_register_update_checklist_standard.docx",
         "note": "内部复核清单，内部编号 M04",
+    },
+    "p2_m04_register_members": {
+        "category": "变更 P2",
+        "name": "M04 Register of Members Update",
+        "version": "v0.1",
+        "status": "启用",
+        "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M04_register_of_members_update_standard.docx",
+        "note": "增资配股后的成员名册更新记录，内部编号 M04",
     },
     "p2_m05_agm_package": {
         "category": "年审 P2",
@@ -531,21 +555,69 @@ class App(BaseHTTPRequestHandler):
           <div class="toolbar">
             <div>
               <h2>文件生成工作台</h2>
-              <p class="muted">选择对应业务表，上传后先复核系统判断，再生成签字 PDF 包。</p>
+              <p class="muted">选择对应业务表，拖拽或点击上传 Excel 后，系统会自动判断并生成 PDF 包。</p>
             </div>
             <span class="badge">内部试运行</span>
           </div>
-          <form method="post" action="/upload" enctype="multipart/form-data" class="upload">
-            <input type="file" name="file" accept=".xlsx" required>
+          <form method="post" action="/upload" enctype="multipart/form-data" class="upload upload-drop-form" id="main-upload-form">
+            <label class="upload-dropzone" id="main-upload-dropzone">
+              <input class="upload-input" id="main-upload-input" type="file" name="file" accept=".xlsx" required>
+              <span class="upload-icon">XLSX</span>
+              <span class="upload-title">拖拽 Excel 到这里，或点击选择文件</span>
+              <span class="upload-hint" id="main-upload-hint">支持 .xlsx；选择后会直接上传并生成任务。</span>
+            </label>
             <button type="submit">上传并分析</button>
           </form>
+          <script>
+            (() => {{
+              const form = document.getElementById("main-upload-form");
+              const dropzone = document.getElementById("main-upload-dropzone");
+              const input = document.getElementById("main-upload-input");
+              const hint = document.getElementById("main-upload-hint");
+              if (!form || !dropzone || !input || !hint) return;
+
+              const submitIfReady = () => {{
+                if (!input.files || input.files.length === 0) return;
+                const file = input.files[0];
+                if (!file.name.toLowerCase().endsWith(".xlsx")) {{
+                  hint.textContent = "请上传 .xlsx 格式的业务表。";
+                  dropzone.classList.add("upload-invalid");
+                  return;
+                }}
+                hint.textContent = "正在上传：" + file.name;
+                dropzone.classList.remove("upload-invalid");
+                dropzone.classList.add("upload-selected");
+                form.requestSubmit();
+              }};
+
+              input.addEventListener("change", submitIfReady);
+              ["dragenter", "dragover"].forEach((eventName) => {{
+                dropzone.addEventListener(eventName, (event) => {{
+                  event.preventDefault();
+                  dropzone.classList.add("is-dragover");
+                }});
+              }});
+              ["dragleave", "drop"].forEach((eventName) => {{
+                dropzone.addEventListener(eventName, (event) => {{
+                  event.preventDefault();
+                  dropzone.classList.remove("is-dragover");
+                }});
+              }});
+              dropzone.addEventListener("drop", (event) => {{
+                const files = event.dataTransfer && event.dataTransfer.files;
+                if (!files || files.length === 0) return;
+                input.files = files;
+                submitIfReady();
+              }});
+            }})();
+          </script>
         </section>
         <section class="panel">
           <h3>选择业务入口</h3>
           <div class="operation-grid">
             <div class="operation-card">
               <strong>注册文件生成</strong>
-              <p>用于新加坡新公司注册后整套签字文件。适合董事、秘书、股东、Form 24、RORC 和股权证书。</p>
+              <p>用于新加坡新公司注册后整套签字文件。适合董事、秘书、股东、Form 24、RORC、股权证书和初始股东名册。</p>
               <div class="download-grid compact">{p1_cards or '<p class="muted">未找到注册导入模板。</p>'}</div>
             </div>
             <div class="operation-card">
@@ -568,7 +640,7 @@ class App(BaseHTTPRequestHandler):
           </div>
           <div class="panel">
             <h3>当前可生成</h3>
-            <p>新公司注册、普通董事决议、转入、股份转让、增资配股和年审包都已接入 PDF 生成。普通用户只需要上传资料表、复核文件清单、生成并下载 PDF 包。</p>
+            <p>新公司注册、普通董事决议、转入、股份转让、增资配股和年审包都已接入 PDF 生成。注册、转股和配股会同步生成 Register of Members 相关文件。</p>
           </div>
           <div class="panel">
             <h3>默认填写规则</h3>
@@ -1120,8 +1192,8 @@ class App(BaseHTTPRequestHandler):
                 <div><strong>注册文件包</strong><span>内部编号 P1，已生成 PDF 包。</span></div>
                 <div><strong>普通董事决议</strong><span>内部编号 M01，已生成 PDF 包。</span></div>
                 <div><strong>转入文件包</strong><span>内部编号 M02，已按两份签字 PDF 生成。</span></div>
-                <div><strong>股份转让包</strong><span>内部编号 M03，已生成转股决议、Instrument、股权证书和内部清单。</span></div>
-                <div><strong>增资配股包</strong><span>内部编号 M04，已生成授权、配股、申请书、证书和 Form 24。</span></div>
+                <div><strong>股份转让包</strong><span>内部编号 M03，已生成转股决议、Instrument、股权证书、Register 更新和内部清单。</span></div>
+                <div><strong>增资配股包</strong><span>内部编号 M04，已生成授权、配股、申请书、证书、Form 24 和 Register 更新。</span></div>
                 <div><strong>年审文件包</strong><span>内部编号 M05，已生成 AGM、AR 授权和复核清单。</span></div>
               </div>
             </div>

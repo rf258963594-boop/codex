@@ -37,6 +37,7 @@ M03_TEMPLATE_NAMES = {
     "resolution": "M03_share_transfer_directors_resolution_standard.docx",
     "instrument": "M03_instrument_of_transfer_standard.docx",
     "certificate": "M03_updated_share_certificate_standard.docx",
+    "register": "M03_register_of_members_update_standard.docx",
     "checklist": "M03_register_and_stamp_duty_checklist_standard.docx",
 }
 M04_TEMPLATE_NAMES = {
@@ -45,6 +46,7 @@ M04_TEMPLATE_NAMES = {
     "application": "M04_share_application_standard.docx",
     "certificate": "M04_share_certificate_standard.docx",
     "form24": "M04_return_of_allotment_form24_standard.docx",
+    "register": "M04_register_of_members_update_standard.docx",
     "checklist": "M04_register_update_checklist_standard.docx",
 }
 M05_TEMPLATE_NAMES = {
@@ -117,6 +119,7 @@ def generate_p1_package(parsed: dict[str, Any], job_code: str) -> Path:
         ("01_first_directors_resolution_standard.docx", "01_first_directors_resolution.docx"),
         ("05_secretary_service_agreement_standard.docx", "05_secretary_service_agreement.docx"),
         ("07_return_of_allotment_form24_standard.docx", "07_return_of_allotment_form24.docx"),
+        ("09_register_of_members_standard.docx", "09_register_of_members.docx"),
     ]
     for template_name, output_name in company_templates:
         render_docx(P1_TEMPLATE_DIR / template_name, package_dir / output_name, context)
@@ -498,7 +501,11 @@ def generate_p2_m03_package(parsed: dict[str, Any], job_code: str) -> Path:
         )
         generated.append(output_name)
 
-    checklist_name = f"04_M03_register_and_stamp_duty_checklist_{company_name}.docx"
+    register_name = f"04_M03_register_of_members_update_{company_name}.docx"
+    render_m01_docx(P2_TEMPLATE_DIR / M03_TEMPLATE_NAMES["register"], package_dir / register_name, context)
+    generated.append(register_name)
+
+    checklist_name = f"05_M03_register_and_stamp_duty_checklist_{company_name}.docx"
     render_m01_docx(P2_TEMPLATE_DIR / M03_TEMPLATE_NAMES["checklist"], package_dir / checklist_name, context)
     generated.append(checklist_name)
 
@@ -605,7 +612,11 @@ def generate_p2_m04_package(parsed: dict[str, Any], job_code: str) -> Path:
     render_m01_docx(P2_TEMPLATE_DIR / M04_TEMPLATE_NAMES["form24"], package_dir / form24_name, context)
     generated.append(form24_name)
 
-    checklist_name = f"06_M04_register_update_checklist_{company_name}.docx"
+    register_name = f"06_M04_register_of_members_update_{company_name}.docx"
+    render_m01_docx(P2_TEMPLATE_DIR / M04_TEMPLATE_NAMES["register"], package_dir / register_name, context)
+    generated.append(register_name)
+
+    checklist_name = f"07_M04_register_update_checklist_{company_name}.docx"
     render_m01_docx(P2_TEMPLATE_DIR / M04_TEMPLATE_NAMES["checklist"], package_dir / checklist_name, context)
     generated.append(checklist_name)
 
@@ -801,9 +812,9 @@ def build_m04_pdf_zip_from_docx_dir(docx_dir: Path, pdf_dir: Path, zip_path: Pat
         copy_pdf(source, target)
         final_paths.append(target)
 
-    checklist = first_pdf_with_prefix(converted, "06_M04_register_update_checklist_")
+    checklist = first_pdf_with_prefix(converted, "07_M04_register_update_checklist_")
     if checklist:
-        target = final_dir / f"99_M04_internal_register_update_checklist_{suffix_after_prefix(checklist, '06_M04_register_update_checklist_')}.pdf"
+        target = final_dir / f"99_M04_internal_register_update_checklist_{suffix_after_prefix(checklist, '07_M04_register_update_checklist_')}.pdf"
         copy_pdf(checklist, target)
         final_paths.append(target)
 
@@ -819,7 +830,7 @@ def build_m04_pdf_zip_from_docx_dir(docx_dir: Path, pdf_dir: Path, zip_path: Pat
                 "03_M04_share_application_",
                 "04_M04_share_certificate_",
                 "05_M04_return_of_allotment_form24_",
-                "06_M04_register_update_checklist_",
+                "07_M04_register_update_checklist_",
             ]
         ):
             continue
@@ -1053,6 +1064,15 @@ def build_m03_context(parsed: dict[str, Any]) -> dict[str, Any]:
         "provider": provider_context(),
         "signature": signature_context(signature_date),
         "m03": m03,
+        "register": register_context(
+            company,
+            m03_register_entries(transfers),
+            title="REGISTER OF MEMBERS UPDATE RECORD",
+            subtitle="Share transfer update record",
+            transaction_type="Transfer of shares",
+            effective_date=signature_date,
+            note="This record summarises the member register update arising from the share transfer documents generated in this package. It should be checked against the signed transfer instrument, share certificates and final statutory records before filing or release.",
+        ),
     }
 
 
@@ -1105,6 +1125,15 @@ def build_m04_context(parsed: dict[str, Any]) -> dict[str, Any]:
         "provider": provider_context(),
         "signature": signature_context(signature_date),
         "m04": m04,
+        "register": register_context(
+            company,
+            m04_register_entries(allotments),
+            title="REGISTER OF MEMBERS UPDATE RECORD",
+            subtitle="Share allotment update record",
+            transaction_type="Allotment of shares",
+            effective_date=signature_date,
+            note="This record summarises the member register update arising from the share allotment documents generated in this package. It should be checked against the signed allotment authority, Form 24, share certificates and final ACRA / BizFile records before filing or release.",
+        ),
     }
 
 
@@ -1386,6 +1415,7 @@ def normalize_m01_company(raw: dict[str, Any]) -> dict[str, Any]:
     company.setdefault("company_name", "")
     company.setdefault("uen", "")
     company.setdefault("registered_office_address", "")
+    company.setdefault("register_location", company.get("registered_office_address", ""))
     company.setdefault("default_document_date", "")
     return company
 
@@ -1700,6 +1730,37 @@ def m03_transfer_parties(transfers: list[dict[str, Any]]) -> list[dict[str, Any]
     return dedupe_signers([party for party in parties if clean(party.get("full_name"))])
 
 
+def m03_register_entries(transfers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for row in transfers:
+        transferor = clean(row.get("transferor_name"))
+        old_cert = clean(row.get("old_certificate_no"))
+        remarks = []
+        if transferor:
+            remarks.append(f"Transfer from {transferor}")
+        if old_cert:
+            remarks.append(f"Old certificate: {old_cert}")
+        if clean(row.get("consideration_text")):
+            remarks.append(clean(row.get("consideration_text")))
+        entries.append(
+            {
+                "folio_no": clean(row.get("transfer_id")),
+                "member_name": clean(row.get("transferee_name")),
+                "id_number": clean(row.get("transferee_id_number")),
+                "address": clean(row.get("transferee_address")),
+                "shares": clean(row.get("shares_transferred")),
+                "share_class": clean(row.get("share_class")) or "Ordinary",
+                "certificate_no": clean(row.get("new_certificate_no")),
+                "entry_date": clean(row.get("transfer_date")),
+                "transaction_reference": clean(row.get("transfer_id")),
+                "paid_status_text": "fully paid",
+                "paid_amount_raw": "",
+                "remarks": "; ".join(part for part in remarks if part),
+            }
+        )
+    return entries
+
+
 def m03_signature_rows(signers: list[dict[str, Any]], default_capacity: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for idx in range(0, len(signers), 2):
@@ -1887,6 +1948,35 @@ def m04_certificate_paid_status_line(row: dict[str, Any]) -> str:
     if text_value:
         return text_value
     return "fully paid"
+
+
+def m04_register_entries(allotments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for row in allotments:
+        remarks = []
+        if clean(row.get("issued_share_capital_text")):
+            remarks.append(f"Issued: {clean(row.get('issued_share_capital_text'))}")
+        if clean(row.get("paid_up_share_capital_text")):
+            remarks.append(f"Paid-up: {clean(row.get('paid_up_share_capital_text'))}")
+        if clean(row.get("remarks")):
+            remarks.append(clean(row.get("remarks")))
+        entries.append(
+            {
+                "folio_no": clean(row.get("allotment_id")),
+                "member_name": clean(row.get("allottee_name")),
+                "id_number": clean(row.get("allottee_id_number")),
+                "address": clean(row.get("allottee_address")),
+                "shares": clean(row.get("shares_allotted")),
+                "share_class": clean(row.get("share_class")) or "Ordinary",
+                "certificate_no": clean(row.get("certificate_no")),
+                "entry_date": clean(row.get("allotment_date")),
+                "transaction_reference": clean(row.get("allotment_id")),
+                "paid_status_text": clean(row.get("paid_status_text")),
+                "paid_amount_raw": clean(row.get("paid_up_share_capital_raw")),
+                "remarks": "; ".join(part for part in remarks if part),
+            }
+        )
+    return entries
 
 
 def m04_share_class_summary(allotments: list[dict[str, Any]]) -> str:
@@ -2591,6 +2681,7 @@ def build_context(parsed: dict[str, Any]) -> dict[str, Any]:
         "registrable_controllers": registrable_controllers(shareholders, total_shares),
         "provider": provider_context(),
         "signature": sig,
+        "register": p1_register_context(company, shareholders),
         "director": directors[0] if directors else {},
         "secretary": secretaries[0] if secretaries else {},
         "shareholder": shareholders[0] if shareholders else {},
@@ -2600,6 +2691,76 @@ def build_context(parsed: dict[str, Any]) -> dict[str, Any]:
         "client_signatory_3": {},
         "secretary_or_director": (secretaries or directors or [{}])[0],
     }
+
+
+def p1_register_context(company: dict[str, Any], shareholders: list[dict[str, Any]]) -> dict[str, Any]:
+    return register_context(
+        company,
+        p1_register_entries(shareholders),
+        title="REGISTER OF MEMBERS",
+        subtitle="Initial register after incorporation",
+        transaction_type="Subscription on incorporation",
+        effective_date=company.get("incorporation_date_raw") or company.get("incorporation_date"),
+        note="This initial register is prepared from the incorporation shareholding information provided for the document package. It should be checked against the Constitution, Form 24 / Return of Allotment and issued share certificates before being treated as the Company's statutory register.",
+    )
+
+
+def register_context(
+    company: dict[str, Any],
+    entries: list[dict[str, Any]],
+    *,
+    title: str,
+    subtitle: str,
+    transaction_type: str,
+    effective_date: Any,
+    note: str,
+) -> dict[str, Any]:
+    date_raw = clean(effective_date) or company.get("default_document_date") or company.get("incorporation_date_raw")
+    return {
+        "title": title,
+        "subtitle": subtitle,
+        "transaction_type": transaction_type,
+        "effective_date": date_text(date_raw),
+        "prepared_date": date_text(date_raw),
+        "location": clean(company.get("register_location") or company.get("registered_office_address")),
+        "share_class": clean(company.get("share_class") or company.get("share_class_default")) or "Ordinary",
+        "currency": clean(company.get("share_currency") or company.get("currency")) or "SGD",
+        "total_shares": format_number(sum_number(row.get("shares") for row in entries)),
+        "total_paid": register_total_paid_text(company, entries),
+        "entries": entries,
+        "note": note,
+    }
+
+
+def register_total_paid_text(company: dict[str, Any], entries: list[dict[str, Any]]) -> str:
+    currency = clean(company.get("share_currency") or company.get("currency")) or "SGD"
+    explicit = clean(company.get("paid_up_capital"))
+    if explicit:
+        return f"{currency} {format_money_number(explicit)}"
+    total = sum_number(row.get("paid_amount_raw") for row in entries)
+    return f"{currency} {format_money_number(total)}" if total else f"{currency} -"
+
+
+def p1_register_entries(shareholders: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for idx, row in enumerate(shareholders, start=1):
+        entries.append(
+            {
+                "folio_no": clean(row.get("folio_no")) or str(idx),
+                "member_name": clean(row.get("shareholder_name")),
+                "id_number": clean(row.get("id_number")),
+                "address": clean(row.get("shareholder_address")),
+                "shares": clean(row.get("shares")),
+                "share_class": clean(row.get("share_class")) or "Ordinary",
+                "certificate_no": clean(row.get("certificate_no")),
+                "entry_date": clean(row.get("allotment_date") or row.get("issue_date") or row.get("document_date")),
+                "transaction_reference": clean(row.get("allotment_transfer_no")) or "Subscription",
+                "paid_status_text": clean(row.get("paid_status_text")),
+                "paid_amount_raw": clean(row.get("paid_amount") or row.get("paid_up_share_capital")),
+                "remarks": clean(row.get("remarks")),
+            }
+        )
+    return entries
 
 
 def merge_p1_generation_options(company: dict[str, Any], source: Any) -> None:

@@ -50,7 +50,8 @@ def ensure_dirs() -> None:
     TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     for directory in (TEMPLATE_DIR, OUTPUT_DIR):
-        for path in directory.glob("M04_*"):
+        for name in TEMPLATES.values():
+            path = directory / name
             if path.is_file():
                 path.unlink()
 

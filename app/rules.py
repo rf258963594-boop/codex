@@ -133,8 +133,8 @@ def suggest_incorporation(parsed: dict[str, Any]) -> dict[str, Any]:
         file_item("Nominee Director Agreement", f"识别到 {len(nominee_directors)} 名挂名董事", "挂名董事 + 客户方代表", "Yes" if nominee_directors else "No", manual_review=True),
         file_item("Return of Allotment of Shares / Form 24", "注册配股资料", "当前为一家公司一份，列出全部股东签字块", "Yes" if shareholders_raw else "No", manual_review=True),
         file_item("RORC Notice to Registrable Controller", "按 25% 以上持股初步筛选", "每名控制人一份", "Auto", manual_review=True),
+        file_item("Register of Members", "注册后的初始股东名册", "不签；内部存档/交接", "Yes", manual_review=True),
         file_item("Signature Record Attachment", "P2：电子签名审计附件", "暂不生成", "No"),
-        file_item("Statutory Registers", "P2：Registers 包", "暂不生成", "No"),
         file_item("BizFile Filing Checklist", "注册资料检查", "不签", "Yes"),
     ]
 
@@ -174,6 +174,7 @@ def build_incorporation_preview(context: dict[str, Any]) -> list[dict[str, Any]]
         preview_item("Nominee Director Agreement", len(nominees), "挂名董事 + 客户方代表", names(nominees)),
         preview_item("Return of Allotment / Form 24", 1, "一家公司一份；列全部股东", names(shareholders, "shareholder_name")),
         preview_item("RORC Notice", len(controllers), "每名控制人一份", names(controllers, "shareholder_name")),
+        preview_item("Register of Members", 1, "初始股东名册；不签", names(shareholders, "shareholder_name")),
     ]
 
 
@@ -383,11 +384,12 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
             [
                 file_item("Share Transfer Directors' Resolution", f"识别到 {len(transfers)} 条股份转让", "董事签署", "Yes", package="股份转让包", doc_type="DR"),
                 file_item("Instrument of Transfer", "股份转让核心交易文件", "转让人 + 受让人签署", "Yes", manual_review=True, package="股份转让包", doc_type="Instrument"),
-                file_item("Stamp Duty Review Checklist", "涉及转股印花税/交易价值复核", "内部核对", "Auto", manual_review=True, package="股份转让包", doc_type="Checklist"),
                 file_item("Updated Share Certificate", "转股后更新股权证书", "公司签发", "Auto", manual_review=True, package="股份转让包", doc_type="Certificate"),
+                file_item("Register of Members Update Record", "股份转让后的股东名册更新记录", "不签；内部存档/交接", "Yes", manual_review=True, package="股份转让包", doc_type="Register"),
+                file_item("Stamp Duty Review Checklist", "涉及转股印花税/交易价值复核", "内部核对", "Auto", manual_review=True, package="股份转让包", doc_type="Checklist"),
             ]
         )
-        preview.append(preview_item("股份转让包", len(transfers), "不生成 Form 24；转让双方 + 董事/公司签发", transfer_summary(transfers)))
+        preview.append(preview_item("股份转让包", len(transfers), "不生成 Form 24；含 Register 更新记录", transfer_summary(transfers)))
         info.append("股份转让不生成 Form 24；Form 24 只用于增资/配股。")
         if any(is_yes(row.get("stamp_duty_review")) or text(row.get("consideration_basis")) == "stamp_duty_higher_of_price_or_nav" for row in transfers):
             warnings.append("股份转让涉及印花税或公司资产价值口径，请人工复核对价/NAV。")
@@ -401,9 +403,10 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
                 file_item("Share Application Letter", "认购人申请认购新股", "认购人签署", "Yes", package="增资配股包", doc_type="Application"),
                 file_item("Return of Allotment / Form 24", "增资/配股申报资料", "董事/秘书申报", "Yes", manual_review=True, package="增资配股包", doc_type="Form 24"),
                 file_item("Share Certificate", "新股发行后签发证书", "公司签发", "Auto", manual_review=True, package="增资配股包", doc_type="Certificate"),
+                file_item("Register of Members Update Record", "增资配股后的股东名册更新记录", "不签；内部存档/交接", "Yes", manual_review=True, package="增资配股包", doc_type="Register"),
             ]
         )
-        preview.append(preview_item("增资配股包", len(allotments), "S161/股东授权 + 董事配股 + Form 24", allotment_summary(allotments)))
+        preview.append(preview_item("增资配股包", len(allotments), "S161/股东授权 + 董事配股 + Form 24 + Register 更新", allotment_summary(allotments)))
 
     if annual_required:
         detected.append("annual_review")
