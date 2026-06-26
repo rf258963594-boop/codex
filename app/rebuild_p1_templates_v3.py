@@ -42,6 +42,24 @@ MANIFEST = [
     if item["template_id"] != "signature_record_attachment"
 ]
 
+MANIFEST_OVERRIDES = {
+    "first_directors_resolution": {
+        "signing_logic": "All directors sign in one document using company.director_signature_blocks.",
+    },
+    "share_certificate": {
+        "signing_logic": "Certificate is executed by the company. The director signature line is intentionally blank for the actual signing director; the secretary line uses the company secretary. The system prefers a non-nominee/client director for certificate context and uses a nominee director only as fallback.",
+    },
+    "secretary_service_agreement": {
+        "signing_logic": "Provider signs and one client representative signs. The client representative defaults to shareholder 1, then a marked client signatory, then director 1.",
+    },
+    "nominee_director_agreement": {
+        "signing_logic": "Nominee director signs and one client representative signs. The client representative defaults to shareholder 1.",
+    },
+}
+
+for item in MANIFEST:
+    item.update(MANIFEST_OVERRIDES.get(item["template_id"], {}))
+
 MANIFEST.extend(
     [
         {
@@ -62,17 +80,52 @@ MANIFEST.extend(
             "repeat": "one_per_registrable_controller_shareholder",
             "manual_review": True,
         },
+        {
+            "template_id": "register_of_members",
+            "file_name": "09_register_of_members_standard.docx",
+            "display_name": "Register of Members",
+            "source": "Generated initial statutory register from shareholder rows",
+            "build_method": "v3_standardized_register_template",
+            "repeat": "one_per_company",
+            "manual_review": True,
+        },
+        {
+            "template_id": "paid_up_capital_confirmation",
+            "file_name": "10_paid_up_capital_confirmation_standard.docx",
+            "display_name": "Confirmation of Paid-Up Capital",
+            "source": "Client director paid-up capital confirmation sample",
+            "build_method": "v3_standardized_layout_new_confirmation",
+            "repeat": "one_per_company",
+            "signing_logic": "Signed by a client-side director; the system prefers a non-nominee director and only falls back if none is available.",
+            "manual_review": True,
+        },
     ]
 )
 
 FIELD_NOTES = {
-    **{key: value for key, value in v2.FIELD_NOTES.items() if key != "signature_record.*"},
+    **{key: value for key, value in v2.FIELD_NOTES.items() if key not in {"signature_record.*", "company.fye"}},
     "company.share_currency": "Share currency; default usually SGD.",
     "company.subscriber_share_totals": "Derived total/share-count cell used by the v3 subscriber shares table.",
-    "company.paid_up_capital": "Derived total paid-up capital from shareholder rows; default can be shares x par value for ordinary cash subscriptions.",
+    "company.director_signature_blocks": "Derived signature lines for all directors in the first directors resolution.",
+    "company.share_par_value": "Legacy compatibility value; current templates prefer issued/paid-up share capital fields.",
+    "company.fye_month": "Financial year end month, auto-derived from incorporation date unless overridden.",
+    "company.first_financial_period_start": "First accounts period start, defaults to incorporation date and renders as a long date.",
+    "company.first_financial_period_end": "First accounts period end, auto-derived as the last day of the month before the incorporation month unless overridden.",
+    "client_signatory.*": "Single client-side signer. Defaults to shareholder 1, then a marked client signatory, then director 1.",
+    "company.issued_share_capital": "Derived total issued share capital from shareholder rows; defaults to shares for normal 1:1 ordinary shares.",
+    "company.paid_up_capital": "Derived total paid-up share capital from shareholder rows; defaults to issued share capital when blank.",
+    "company.unpaid_share_capital": "Derived unpaid share capital; used as a review flag when issued capital is higher than paid-up capital.",
+    "company.amount_paid_per_share": "Derived paid amount per share for Form 24.",
+    "company.amount_due_per_share": "Derived amount due per share for Form 24; '-' when fully paid.",
     "shareholders[]": "Repeating shareholder rows used by Form 24 and RORC; Form 24 allottees and shareholder signature blocks repeat from this list.",
     "shareholder.date_of_birth": "Derived from the matched People row when the shareholder is an individual.",
     "company.shareholder_signature_blocks": "Derived Form 24 signature lines, one block for each shareholder/allottee.",
+    "shareholder.issued_share_capital": "Shareholder-level issued share capital.",
+    "shareholder.paid_up_share_capital": "Shareholder-level paid-up share capital.",
+    "shareholder.unpaid_share_capital": "Shareholder-level unpaid share capital.",
+    "shareholder.paid_status_text": "Share certificate wording, e.g. fully paid or partly paid details.",
+    "shareholder.form24_allotment_text": "Form 24 allotment summary with shares, issued capital, paid-up capital and unpaid capital when applicable.",
+    "paid_up_confirmation_signatory.*": "Client-side director context for the paid-up capital confirmation; prefers a non-nominee director.",
 }
 
 P2_DEFERRED = [
@@ -963,6 +1016,62 @@ def build_rorc_notice() -> None:
     save(doc, "08_rorc_notice_controller_standard.docx")
 
 
+def build_paid_up_capital_confirmation() -> None:
+    doc = Document()
+    configure_doc(doc, "Confirmation of Paid-Up Capital")
+    add_title(doc, title="CONFIRMATION OF PAID-UP CAPITAL")
+    add_rule(doc)
+    add_para(doc, "Date: {{signature.date}}", align=WD_ALIGN_PARAGRAPH.RIGHT, bold=True, after=12)
+    add_para(doc, "To Whom It May Concern", after=10)
+    add_para(doc, "RE: CONFIRMATION OF PAID-UP CAPITAL", bold=True, after=10)
+    add_para(
+        doc,
+        "I, {{paid_up_confirmation_signatory.full_name}}, sign this confirmation in my capacity as "
+        "{{paid_up_confirmation_signatory.capacity}} of {{company.company_name}} (the \"Company\").",
+        after=8,
+    )
+    add_para(
+        doc,
+        "I confirm that, based on the information provided to the Company and its corporate service provider "
+        "for the purpose of incorporation and statutory record preparation, the issued share capital and paid-up "
+        "share capital recorded below are true and correct.",
+        after=8,
+    )
+    add_key_value_table(
+        doc,
+        [
+            ("Company", "{{company.company_name}}"),
+            ("Company Registration No.", "{{company.uen}}"),
+            ("Registered Office", "{{company.registered_office_address}}"),
+            ("Currency", "{{company.share_currency}}"),
+            ("Issued Share Capital", "{{company.share_currency}} {{company.issued_share_capital}}"),
+            ("Paid-Up Share Capital", "{{company.share_currency}} {{company.paid_up_capital}}"),
+            ("Unpaid Share Capital, if any", "{{company.share_currency}} {{company.unpaid_share_capital}}"),
+        ],
+    )
+    add_para(doc, "", after=4)
+    add_para(
+        doc,
+        "The shareholder(s) remain responsible for paying the subscribed share capital due from them. The Company "
+        "should ensure that its accounting records and bank records properly reflect the paid-up share capital.",
+        after=8,
+    )
+    add_para(
+        doc,
+        "This confirmation is prepared for the Company's incorporation file and internal corporate secretarial records. "
+        "It does not replace supporting accounting records, bank records or any other evidence that may be required for "
+        "audit, tax, bank or regulatory review.",
+        after=18,
+    )
+    add_signature_table(
+        doc,
+        [("Signed by", "{{paid_up_confirmation_signatory.full_name}}", "{{paid_up_confirmation_signatory.capacity}}")],
+        page_break_before=True,
+    )
+    add_para(doc, "Dated: {{signature.date}}", style="Signature Label")
+    save(doc, "10_paid_up_capital_confirmation_standard.docx")
+
+
 def build_statutory_registers() -> None:
     doc = Document()
     configure_doc(doc, "Statutory Registers", compact=True)
@@ -1005,8 +1114,8 @@ def write_guides() -> None:
         "principle": "Preserve content from v2/source templates while rebuilding layout with a clean, consistent business-document style. No clause is intentionally summarized or removed.",
         "design_preset": {
             "base": "standard_business_brief",
-            "named_override": "bilingual legal template override: Arial + Microsoft YaHei, 10.5-11 pt body, clean tables/signature blocks, no floating objects or manual-space layout.",
-            "page": "US Letter portrait, formal margins, centered footer page numbers.",
+            "named_override": "legal template override: Arial, 10.5-11 pt body, clean tables/signature blocks, no floating objects or manual-space layout.",
+            "page": "US Letter portrait for standard documents; Share Certificate uses a landscape certificate layout.",
         },
         "quality_changes": [
             "Rebuilt the visual structure instead of carrying forward old Word/WPS floating objects, hidden white text, manual tabs and sample arrows.",
@@ -1015,7 +1124,8 @@ def write_guides() -> None:
             "Added Part 1 Form 24 and RORC templates based on the old registration pack and the shareholder rows, without requiring separate manual allottee/controller fields.",
             "Form 24 now makes the repeated shareholder/allottee area and repeated shareholder signature area explicit in the template.",
             "RORC was returned to a source-like notice/list/signature structure instead of a compressed table summary.",
-            "Rebuilt Share Certificate in a certificate-style landscape layout with counterfoil, receipt and main certificate pages.",
+            "Rebuilt Share Certificate as a single-page certificate original in a centered landscape layout with a restrained red certificate border and a lower fixed signature band; counterfoil/receipt pages are deferred as optional P2 support.",
+            "Removed Chinese company-name/address placeholders and interpreter placeholders from P1 templates because they are not part of the current MVP input fields.",
             "Kept legal/commercial wording from v2/source except for obvious typographical, duplicate-wording and layout-related cleanup.",
         ],
         "manual_review_flags": [
@@ -1078,6 +1188,7 @@ def main() -> None:
     build_nominee_director_agreement()
     build_form24()
     build_rorc_notice()
+    build_paid_up_capital_confirmation()
     write_guides()
     zip_output()
     print(f"Generated standard v3 templates in {TEMPLATE_DIR}")

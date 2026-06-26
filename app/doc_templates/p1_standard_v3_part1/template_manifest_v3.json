@@ -85,8 +85,8 @@
       "source": "8 Agreement for Appointment of Nominee Director.doc/pdf",
       "build_method": "v3_standardized_layout_content_preserved",
       "repeat": "one_per_nominee_director_relationship",
-      "signing_logic": "Nominee director signs and one client representative signs. The client representative defaults to shareholder 1.",
-      "manual_review": true
+      "manual_review": true,
+      "signing_logic": "Nominee director signs and one client representative signs. The client representative defaults to shareholder 1."
     },
     {
       "template_id": "return_of_allotment_form24",
@@ -105,6 +105,25 @@
       "build_method": "v3_standardized_layout_from_source_pdf_shareholder_controller",
       "repeat": "one_per_registrable_controller_shareholder",
       "manual_review": true
+    },
+    {
+      "template_id": "register_of_members",
+      "file_name": "09_register_of_members_standard.docx",
+      "display_name": "Register of Members",
+      "source": "Generated initial statutory register from shareholder rows",
+      "build_method": "v3_standardized_register_template",
+      "repeat": "one_per_company",
+      "manual_review": true
+    },
+    {
+      "template_id": "paid_up_capital_confirmation",
+      "file_name": "10_paid_up_capital_confirmation_standard.docx",
+      "display_name": "Confirmation of Paid-Up Capital",
+      "source": "Client director paid-up capital confirmation sample",
+      "build_method": "v3_standardized_layout_new_confirmation",
+      "repeat": "one_per_company",
+      "signing_logic": "Signed by a client-side director; the system prefers a non-nominee director and only falls back if none is available.",
+      "manual_review": true
     }
   ],
   "fields": {
@@ -114,10 +133,8 @@
     "company.registered_office_address": "Registered office address.",
     "company.register_location": "Place where register of members and index is kept; default can be registered office.",
     "company.first_directors_names": "Derived list of first director names for old resolution sentence.",
-    "company.director_signature_blocks": "Derived signature lines for all directors in the first directors resolution.",
     "company.subscriber_share_lines": "Derived multi-line subscriber/share table text for old resolution layout.",
     "company.share_par_value": "Legacy compatibility value; current templates prefer issued/paid-up share capital fields.",
-    "company.fye_month": "Financial year end month, auto-derived from incorporation date unless overridden.",
     "company.first_financial_period_start": "First accounts period start, defaults to incorporation date and renders as a long date.",
     "company.first_financial_period_end": "First accounts period end, auto-derived as the last day of the month before the incorporation month unless overridden.",
     "director.*": "One director context for per-director documents.",
@@ -129,6 +146,8 @@
     "signature.*": "Signature date fields, including day/month/year split for old legal wording.",
     "company.share_currency": "Share currency; default usually SGD.",
     "company.subscriber_share_totals": "Derived total/share-count cell used by the v3 subscriber shares table.",
+    "company.director_signature_blocks": "Derived signature lines for all directors in the first directors resolution.",
+    "company.fye_month": "Financial year end month, auto-derived from incorporation date unless overridden.",
     "company.issued_share_capital": "Derived total issued share capital from shareholder rows; defaults to shares for normal 1:1 ordinary shares.",
     "company.paid_up_capital": "Derived total paid-up share capital from shareholder rows; defaults to issued share capital when blank.",
     "company.unpaid_share_capital": "Derived unpaid share capital; used as a review flag when issued capital is higher than paid-up capital.",
@@ -141,6 +160,7 @@
     "shareholder.paid_up_share_capital": "Shareholder-level paid-up share capital.",
     "shareholder.unpaid_share_capital": "Shareholder-level unpaid share capital.",
     "shareholder.paid_status_text": "Share certificate wording, e.g. fully paid or partly paid details.",
-    "shareholder.form24_allotment_text": "Form 24 allotment summary with shares, issued capital, paid-up capital and unpaid capital when applicable."
+    "shareholder.form24_allotment_text": "Form 24 allotment summary with shares, issued capital, paid-up capital and unpaid capital when applicable.",
+    "paid_up_confirmation_signatory.*": "Client-side director context for the paid-up capital confirmation; prefers a non-nominee director."
   }
 }

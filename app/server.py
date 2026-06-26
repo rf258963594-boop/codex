@@ -204,6 +204,14 @@ DOCUMENT_TEMPLATES = {
         "path": DOC_TEMPLATE_DIR / "p1_standard_v3_part1" / "09_register_of_members_standard.docx",
         "note": "注册后的初始股东名册",
     },
+    "p1_paid_up_capital_confirmation": {
+        "category": "注册 P1",
+        "name": "Paid-Up Capital Confirmation",
+        "version": "v1.0",
+        "status": "启用",
+        "path": DOC_TEMPLATE_DIR / "p1_standard_v3_part1" / "10_paid_up_capital_confirmation_standard.docx",
+        "note": "客户方董事签署的实缴资本确认书",
+    },
     "p2_m01_ordinary_dr": {
         "category": "变更 P2",
         "name": "普通董事决议",

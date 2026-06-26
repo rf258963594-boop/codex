@@ -120,6 +120,7 @@ def generate_p1_package(parsed: dict[str, Any], job_code: str) -> Path:
         ("05_secretary_service_agreement_standard.docx", "05_secretary_service_agreement.docx"),
         ("07_return_of_allotment_form24_standard.docx", "07_return_of_allotment_form24.docx"),
         ("09_register_of_members_standard.docx", "09_register_of_members.docx"),
+        ("10_paid_up_capital_confirmation_standard.docx", "10_paid_up_capital_confirmation.docx"),
     ]
     for template_name, output_name in company_templates:
         render_docx(P1_TEMPLATE_DIR / template_name, package_dir / output_name, context)
@@ -2758,6 +2759,7 @@ def build_context(parsed: dict[str, Any]) -> dict[str, Any]:
     )
     client_signatory = default_client_signatory(shareholders, people, client_signatories, directors, company)
     certificate_director = default_certificate_director(directors)
+    paid_up_confirmation_signatory = default_paid_up_confirmation_signatory(directors, client_signatory)
 
     sig = signature_context(company.get("incorporation_date_raw"))
     return {
@@ -2779,6 +2781,7 @@ def build_context(parsed: dict[str, Any]) -> dict[str, Any]:
         "shareholder": shareholders[0] if shareholders else {},
         "nominee_director": (nominee_directors or local_directors or directors or [{}])[0],
         "client_signatory": client_signatory,
+        "paid_up_confirmation_signatory": paid_up_confirmation_signatory,
         "client_signatory_2": {},
         "client_signatory_3": {},
         "secretary_or_director": (secretaries or directors or [{}])[0],
@@ -3101,6 +3104,21 @@ def default_certificate_director(directors: list[dict[str, Any]]) -> dict[str, A
     if non_nominee_directors:
         return non_nominee_directors[0]
     return directors[0] if directors else {}
+
+
+def default_paid_up_confirmation_signatory(
+    directors: list[dict[str, Any]],
+    client_signatory: dict[str, Any],
+) -> dict[str, Any]:
+    """Prefer a non-nominee client director for the paid-up capital confirmation."""
+    non_nominee_directors = [p for p in directors if not is_yes(p.get("is_nominee_director"))]
+    if non_nominee_directors:
+        return {**non_nominee_directors[0], "capacity": "Director"}
+    if client_signatory and "director" in clean(client_signatory.get("capacity")).lower():
+        return {**client_signatory, "capacity": "Director"}
+    if directors:
+        return {**directors[0], "capacity": "Director"}
+    return {**client_signatory, "capacity": client_signatory.get("capacity") or "Client Representative"} if client_signatory else {}
 
 
 def client_signatory_from_shareholder(shareholder: dict[str, Any], people: list[dict[str, Any]]) -> dict[str, Any]:
