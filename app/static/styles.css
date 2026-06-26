@@ -910,6 +910,41 @@ button {
   gap: 8px;
 }
 
+.subtemplate-grid {
+  display: grid;
+  gap: 12px;
+  min-width: 420px;
+}
+
+.subtemplate-card {
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 12px;
+}
+
+.subtemplate-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.subtemplate-head strong {
+  color: #0f172a;
+}
+
+.subtemplate-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: #64748b;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
 .template-group {
   border: 1px solid #e2e8f0;
   border-radius: 8px;

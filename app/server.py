@@ -331,6 +331,18 @@ DOCUMENT_TEMPLATES = {
         "status": "启用",
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M05_agm_documents_package_standard.docx",
         "note": "最终生成 1 份签署合并 PDF；包含 AGM/书面年审文件和 Annual Return 授权声明，内部编号 M05",
+        "subtemplates": [
+            {
+                "key": "p2_m05_agm_package",
+                "label": "AGM / DR / 书面年审母版",
+                "note": "控制董事决议、AGM 或书面年审/AGM 豁免路线内容",
+            },
+            {
+                "key": "p2_m05_annual_return_package",
+                "label": "Annual Return / Section 197 / MRL 母版",
+                "note": "控制 AR review、Section 197、休眠/审计声明、AR 授权和 MRL 内容",
+            },
+        ],
     },
     "p2_m05_annual_return_package": {
         "category": "年审 P2",
@@ -2501,7 +2513,11 @@ def admin_overview_html(users, people, rules, job_stats) -> str:
         if isinstance(state, dict) and isinstance(state.get("draft"), dict)
     )
     visible_doc_templates = visible_document_template_items()
-    missing_doc_templates = sum(1 for _, meta in visible_doc_templates if not meta["path"].exists())
+    missing_doc_templates = sum(
+        1
+        for key, meta in visible_doc_templates
+        if document_template_package_status(key, meta, registry)[2] == "danger"
+    )
     total_jobs = int(job_stats["total_jobs"] or 0) if job_stats else 0
     blocked_jobs = int(job_stats["blocked_jobs"] or 0) if job_stats else 0
     pdf_jobs = int(job_stats["pdf_jobs"] or 0) if job_stats else 0
@@ -2600,12 +2616,31 @@ def document_template_rows_html() -> str:
     return "".join(rows) or '<tr><td colspan="6">暂无正式文件模板</td></tr>'
 
 
-def document_template_row_html(key: str, meta: dict[str, object], registry: dict[str, dict[str, object]], include_category: bool = False) -> str:
+def document_template_subtemplate_items(key: str, meta: dict[str, object]) -> list[tuple[str, dict[str, object], str, str]]:
+    children = meta.get("subtemplates")
+    if not isinstance(children, list) or not children:
+        return [(key, meta, str(meta["name"]), str(meta.get("note") or ""))]
+
+    items: list[tuple[str, dict[str, object], str, str]] = []
+    for child in children:
+        if not isinstance(child, dict):
+            continue
+        child_key = str(child.get("key") or "").strip()
+        child_meta = DOCUMENT_TEMPLATES.get(child_key)
+        if not child_key or not child_meta:
+            continue
+        label = str(child.get("label") or child_meta["name"])
+        note = str(child.get("note") or child_meta.get("note") or "")
+        items.append((child_key, child_meta, label, note))
+    return items or [(key, meta, str(meta["name"]), str(meta.get("note") or ""))]
+
+
+def document_template_status(key: str, meta: dict[str, object], registry: dict[str, dict[str, object]]) -> tuple[str, str, str]:
     state = registry.get(key, {})
     draft = state.get("draft") if isinstance(state.get("draft"), dict) else None
     path = meta["path"]
-    version = state.get("version") or meta["version"]
-    status = state.get("status") or meta["status"]
+    version = str(state.get("version") or meta["version"])
+    status = str(state.get("status") or meta["status"])
     updated = state.get("updated_at")
     status_text = f"{status}；{updated}" if updated else status
     status_kind = "ok"
@@ -2615,6 +2650,39 @@ def document_template_row_html(key: str, meta: dict[str, object], registry: dict
     if not path.exists():
         status_text = "缺失"
         status_kind = "danger"
+    return version, status_text, status_kind
+
+
+def document_template_package_status(key: str, meta: dict[str, object], registry: dict[str, dict[str, object]]) -> tuple[str, str, str]:
+    items = document_template_subtemplate_items(key, meta)
+    if len(items) == 1 and items[0][0] == key and not meta.get("subtemplates"):
+        return document_template_status(key, meta, registry)
+
+    versions: list[str] = []
+    missing = 0
+    drafts = 0
+    for child_key, child_meta, _, _ in items:
+        version, _, _ = document_template_status(child_key, child_meta, registry)
+        if version not in versions:
+            versions.append(version)
+        state = registry.get(child_key, {})
+        if isinstance(state.get("draft"), dict):
+            drafts += 1
+        if not child_meta["path"].exists():
+            missing += 1
+
+    version_text = " / ".join(versions) if versions else str(meta["version"])
+    if missing:
+        return version_text, f"缺失 {missing} 个子模板", "danger"
+    if drafts:
+        return version_text, f"启用；{drafts} 个子模板有草稿待启用", "draft"
+    return version_text, "启用", "ok"
+
+
+def document_template_actions_html(key: str, meta: dict[str, object], registry: dict[str, dict[str, object]]) -> str:
+    state = registry.get(key, {})
+    draft = state.get("draft") if isinstance(state.get("draft"), dict) else None
+    path = meta["path"]
     download = f"<a href='/document-template/{h(key)}'>下载模板</a>" if path.exists() else ""
     preview = ""
     preview_name = state.get("preview_pdf", "")
@@ -2630,11 +2698,48 @@ def document_template_row_html(key: str, meta: dict[str, object], registry: dict
       <button type="submit">上传新版草稿</button>
     </form>
     """
+    return f"<div class='template-actions'>{download}{preview}{draft_html}{upload_form}{history_form}</div>"
+
+
+def document_template_subtemplate_card_html(
+    key: str,
+    meta: dict[str, object],
+    label: str,
+    note: str,
+    registry: dict[str, dict[str, object]],
+) -> str:
+    version, status_text, status_kind = document_template_status(key, meta, registry)
+    return f"""
+    <div class="subtemplate-card">
+      <div class="subtemplate-head">
+        <strong>{h(label)}</strong>
+        <span class="dev-code">{h(key)}</span>
+      </div>
+      <p class="muted">{h(note)}</p>
+      <div class="subtemplate-meta">
+        <span>当前版本 {h(version)}</span>
+        <span class="status-pill {status_kind}">{h(status_text)}</span>
+      </div>
+      {document_template_actions_html(key, meta, registry)}
+    </div>
+    """
+
+
+def document_template_row_html(key: str, meta: dict[str, object], registry: dict[str, dict[str, object]], include_category: bool = False) -> str:
+    version, status_text, status_kind = document_template_package_status(key, meta, registry)
+    subtemplates = document_template_subtemplate_items(key, meta)
+    if len(subtemplates) > 1 or meta.get("subtemplates"):
+        action_html = "<div class='subtemplate-grid'>" + "".join(
+            document_template_subtemplate_card_html(child_key, child_meta, label, note, registry)
+            for child_key, child_meta, label, note in subtemplates
+        ) + "</div>"
+    else:
+        action_html = document_template_actions_html(key, meta, registry)
     category_cell = f"<td>{h(meta['category'])}</td>" if include_category else ""
     return (
         f"<tr><td>{h(meta['name'])}</td>{category_cell}<td><span class='dev-code'>{h(key)}</span></td>"
         f"<td>{h(version)}</td><td><span class='status-pill {status_kind}'>{h(status_text)}</span></td>"
-        f"<td>{h(meta['note'])}</td><td><div class='template-actions'>{download}{preview}{draft_html}{upload_form}{history_form}</div></td></tr>"
+        f"<td>{h(meta['note'])}</td><td>{action_html}</td></tr>"
     )
 
 
