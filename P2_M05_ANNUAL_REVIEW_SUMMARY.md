@@ -1,27 +1,26 @@
 # P2 M05 年审包总结
 
-更新时间：2026-06-08  
-状态：已升级到 M05 v0.3。
+更新时间：2026-06-26  
+状态：已升级到 M05 v0.4。
 
 ## 当前结论
 
-M05 v0.2 已经把年审包从“摘要版”重建成较完整的年审文件结构。M05 v0.3 在此基础上增加了“财报方式 / 休眠状态 / AGM 状态”的联动逻辑。
+M05 v0.4 已经把年审包简化成更适合内部操作的状态模型：人工和 AI 主要只需要判断公司是普通活跃、休眠，还是已审计。
 
 现在不再用同一套普通 AGM 文本套所有公司。系统会根据年审字段自动切换：
 
-- 普通不休眠：正常 AGM + unaudited / small company audit exemption 文本。
-- 休眠且不需要财报：dormant / no financial statements route 文本。
-- 审计财报：audited financial statements route 文本，避免误用 Section 205C 小公司审计豁免声明。
+- 普通活跃：正常 AGM 或书面年审文本，财报状态显示为 active / unaudited financial statements。
+- 休眠：休眠公司文本，不生成普通 AGM 的 Proxy、Attendance Sheet、AGM Minutes。
+- 审计财报：审计财报文本，避免误用 Section 205C 小公司审计豁免声明。
 - AGM exempt / dispensed / written resolutions：不生成普通 AGM Notice / Proxy / Attendance / Minutes，改为成员书面确认/书面年审路线。
 
 注意：M05 仍然是内部文件生成器，不代表 ACRA / BizFile filing 已完成，也不替代秘书/法律复核。
 
 ## 文件组合
 
-M05 最终下载包包含 3 个 PDF：
+M05 最终下载包包含 2 个 PDF：
 
-- `01_M05_agm_documents_package_{company}.pdf`：AGM 或书面年审文件包。
-- `02_M05_annual_return_authorisation_package_{company}.pdf`：Annual Return 授权及声明包。
+- `01_M05_annual_review_signing_package_{company}.pdf`：AGM/书面年审文件 + Annual Return 授权及声明的合并签署包。
 - `99_M05_annual_review_internal_checklist_{company}.pdf`：内部复核清单。
 
 ## 普通 AGM 路线
@@ -58,19 +57,20 @@ Annual Return 包包含：
 - Filing of Annual Return authorisation letter to RSIN GROUP PTE. LTD.
 - Management Representation 或 Dormant Company Representation
 
-## 新增关键字段
+## 关键字段
 
-- `company_activity_status`：Active / Dormant
-- `accounts_status`：non_dormant / dormant / unaudited / audited / manual
-- `financial_statements_type`：Auto / Unaudited / Audited / Dormant no FS / Management accounts
-- `financial_statements_required`：Auto / Yes / No
-- `audit_exemption_status`：Auto / Small company exempt / Audited / Dormant relevant / Manual review
+- `accounts_status`：核心字段，只使用 active / dormant / audited。留空或 Auto 按 active 处理。
+- `agm_route`：ordinary_agm / written_resolutions / exempt_private_company / dispensed_with_agm / manual。
+- `company_activity_status`：兼容/复核字段，通常留空。
+- `financial_statements_type`：兼容字段，通常留空。
+- `financial_statements_required`：兼容字段，通常留空。
+- `audit_exemption_status`：兼容/复核字段，通常留空。
 - `agm_status`：Auto / Held AGM / Dispensed with AGM / Exempt from AGM / Written resolutions
 - `acra_dormant_relevant_company`：Auto / Yes / No
 - `total_assets_under_500k`：Auto / Yes / No
 - `iras_tax_status`：Auto / Active / Dormant / Dormant waiver granted / Manual review
 
-默认策略：留空或 Auto 时按普通不休眠、小公司审计豁免、有 AGM 的常见路线处理；如果填 Dormant / Audited / AGM exempt 等状态，系统切换对应文书。
+默认策略：`accounts_status` 是控制字段；普通年审留空或填 active。只有明确休眠时填 dormant，明确审计时填 audited。其他字段只作兼容和人工复核，不应在普通年审里强行填写。
 
 ## 签字逻辑
 
@@ -96,8 +96,8 @@ Annual Return 包包含：
 
 检查结果：
 
-- 普通 AGM 路线：AGM 包 6 页，Annual Return 包 5 页，内部清单 1 页。
-- 休眠书面路线：AGM / 书面年审包 2 页，Annual Return 包 5 页，内部清单 1 页。
+- 普通 AGM 路线：合并签署包 + 内部清单。
+- 休眠书面路线：合并签署包 + 内部清单，不生成普通 AGM Proxy、Attendance Sheet、AGM Minutes。
 - 审计财报路线：使用 Audited Accounts Review Statement，没有误用 Section 205C 小公司审计豁免声明。
 - 文本检查未发现未替换占位符、None、NaN 或 IF 标记残留。
 - 休眠包未出现 Proxy、Attendance Sheet、AGM Minutes，也未出现普通 MRL 的 “financial statements have been prepared” 文本。

@@ -410,14 +410,13 @@ M05 is the annual review / AGM / Annual Return authorisation package for an exis
 
 ## Rebuild note
 
-Version P2_M05_v0.3 uses a simplified annual review status model. The main `accounts_status` values are `active`, `dormant` and `audited`; older `non_dormant` / `unaudited` values are treated as active for compatibility.
+Version P2_M05_v0.4 uses a simplified annual review status model. The main `accounts_status` values are `active`, `dormant` and `audited`; older `non_dormant` / `unaudited` values are treated as active for compatibility.
 
 ## Generated PDFs
 
 | File | Content | Main signer |
 |---|---|---|
-| AGM documents package | Directors' written resolutions plus either AGM documents or written annual review / member consent documents | Directors, member(s), chairperson |
-| Annual Return authorisation package | Annual Return review summary, Section 197 certificate, dynamic audit/dormant/audited statement, AR filing authorisation, management representation | Director(s) / authorised signer |
+| Annual review signing package | AGM / written annual review documents plus Annual Return review, Section 197 certificate, dynamic audit/dormant/audited statement, AR filing authorisation and management representation | Directors, member(s), authorised signer |
 | Internal checklist | Filing and review checklist | Internal only |
 
 ## Primary fields
@@ -431,10 +430,10 @@ Version P2_M05_v0.3 uses a simplified annual review status model. The main `acco
 | `agm_place` | Quick Annual Review; defaults to registered office |
 | `financial_statement_date` | Quick Annual Review; defaults to FYE |
 | `accounts_status` | active / dormant / audited |
-| `company_activity_status` | Optional compatibility field; normally leave blank / Active |
-| `financial_statements_type` | Optional compatibility field; normally leave blank / Auto |
-| `financial_statements_required` | Optional compatibility field; normally leave blank / Auto |
-| `audit_exemption_status` | Optional compatibility field; normally leave blank / Auto |
+| `company_activity_status` | Optional compatibility field; normally leave blank |
+| `financial_statements_type` | Optional compatibility field; normally leave blank |
+| `financial_statements_required` | Optional compatibility field; normally leave blank |
+| `audit_exemption_status` | Optional compatibility field; normally leave blank |
 | `agm_status` | Auto / Held AGM / Dispensed with AGM / Exempt from AGM / Written resolutions |
 | `acra_dormant_relevant_company` | Auto / Yes / No |
 | `total_assets_under_500k` | Auto / Yes / No |

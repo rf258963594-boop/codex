@@ -1,0 +1,6 @@
+services:
+  secretary-files:
+    volumes:
+      - ./app/data:/app/app/data
+      - ./app/uploads:/app/app/uploads
+      - ./app/generated:/app/app/generated

@@ -19,6 +19,49 @@ def text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def status_key(value: Any) -> str:
+    return text(value).lower().replace("-", "_").replace("/", "_").replace(" ", "_")
+
+
+def annual_status_flags(annual: dict[str, Any]) -> dict[str, bool]:
+    accounts = status_key(annual.get("accounts_status"))
+    activity = status_key(annual.get("company_activity_status"))
+    fs_type = status_key(annual.get("financial_statements_type"))
+    audit_status = status_key(annual.get("audit_exemption_status"))
+    agm_status = status_key(annual.get("agm_status"))
+    agm_route = status_key(annual.get("agm_route"))
+
+    active_values = {"active", "non_dormant", "non_dormant_company", "normal", "ordinary", "unaudited", "small_company"}
+    dormant_values = {"dormant", "dormant_company", "dormant_no_fs", "dormant_no_financial_statements"}
+    audited_values = {"audited", "audit_required", "audited_accounts", "audited_financial_statements"}
+    controlling_values = [accounts] if accounts and accounts != "auto" else [activity, fs_type, audit_status, agm_status, agm_route]
+    is_dormant = any(value in dormant_values for value in controlling_values if value)
+    is_audited = any(value in audited_values for value in controlling_values if value)
+    if accounts in active_values:
+        is_dormant = False
+        is_audited = False
+
+    no_meeting_values = {
+        "dispensed_with_agm",
+        "dispensed",
+        "exempt_from_agm",
+        "agm_exempt",
+        "exempt_private_company",
+        "written_resolution",
+        "written_resolutions",
+        "dormant_company",
+        "no_agm",
+    }
+    no_agm_meeting = agm_status in no_meeting_values or agm_route in no_meeting_values
+    if is_dormant and agm_status in {"", "auto"}:
+        no_agm_meeting = True
+    return {
+        "is_dormant": is_dormant,
+        "is_audited": is_audited,
+        "no_agm_meeting": no_agm_meeting,
+    }
+
+
 def role_has(person: dict[str, Any], key: str) -> bool:
     return is_yes(person.get(key, ""))
 
@@ -413,24 +456,10 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
         fye = text(annual.get("fye_date"))
         if not fye:
             warnings.append("年审已启用，但缺少 fye_date。")
-        status_values = " ".join(
-            text(annual.get(key)).lower()
-            for key in [
-                "accounts_status",
-                "company_activity_status",
-                "financial_statements_type",
-                "audit_exemption_status",
-                "agm_status",
-                "agm_route",
-            ]
-        )
-        is_dormant_route = "dormant" in status_values
-        is_audited_route = any(value in status_values.split() for value in ["audited", "audit_required"])
-        agm_route_values = " ".join(text(annual.get(key)).lower() for key in ["agm_status", "agm_route"])
-        no_agm_route = any(
-            token in status_values
-            for token in ["dormant_company", "exempt", "dispensed", "written_resolution", "written_resolutions", "no_agm"]
-        ) and any(token in agm_route_values for token in ["dormant_company", "exempt", "dispensed", "written_resolution", "written_resolutions", "no_agm"])
+        status_flags = annual_status_flags(annual)
+        is_dormant_route = status_flags["is_dormant"]
+        is_audited_route = status_flags["is_audited"]
+        no_agm_route = status_flags["no_agm_meeting"]
         files.extend(
             [
                 file_item("Annual Review Document List", "年审文件清单", "不签或随包", "Yes", package="年审包", doc_type="Cover"),

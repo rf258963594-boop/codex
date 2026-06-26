@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from shutil import copyfile
 from typing import Any
 
 from openpyxl import Workbook
@@ -11,6 +12,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "outputs"
+IMPORT_OUT = ROOT / "templates" / "import"
 
 TITLE_FILL = PatternFill("solid", fgColor="0F766E")
 HEADER_FILL = PatternFill("solid", fgColor="1F4D78")
@@ -81,16 +83,16 @@ ANNUAL_FIELDS = [
     ("AGM 日期", "AGM date", "agm_date", "", "建议填", "留空后续可由系统按规则推定。"),
     ("AGM 时间", "AGM time", "agm_time", "10.00 a.m.", "默认", "通常不用改。"),
     ("AGM 地点", "AGM place", "agm_place", "", "默认注册地址", "留空默认当前注册地址。"),
-    ("年审方式", "Annual review method", "agm_route", "ordinary_agm", "默认", "ordinary_agm / exempt_private_company / dormant_company / manual。"),
-    ("财报状态", "Accounts status", "accounts_status", "active", "常用", "active / dormant / audited；通常填 active，休眠才填 dormant，已审计才填 audited。"),
-    ("公司活动状态", "Company activity status", "company_activity_status", "Active", "默认", "Active / Dormant；留空按 Active。"),
-    ("是否 ACRA 休眠相关公司", "ACRA dormant relevant company", "acra_dormant_relevant_company", "Auto", "默认 Auto", "Auto / Yes / No；休眠公司会影响是否需要财报。"),
-    ("资产是否不超过 50 万", "Total assets under S$500k", "total_assets_under_500k", "Auto", "默认 Auto", "Auto / Yes / No；用于判断 dormant AGM exemption 风险。"),
-    ("是否需要财报", "Financial statements required", "financial_statements_required", "Auto", "默认 Auto", "Auto / Yes / No；休眠且符合条件时可 No。"),
-    ("财报类型", "Financial statements type", "financial_statements_type", "Auto", "默认 Auto", "Auto / Unaudited / Audited / Dormant no FS / Management accounts。"),
-    ("审计/豁免状态", "Audit exemption status", "audit_exemption_status", "Auto", "默认 Auto", "Auto / Small company exempt / Audited / Dormant relevant / Manual review。"),
-    ("AGM 状态", "AGM status", "agm_status", "Auto", "默认 Auto", "Auto / Held AGM / Dispensed with AGM / Exempt from AGM / Written resolutions。"),
-    ("IRAS 税务状态", "IRAS tax status", "iras_tax_status", "Auto", "可空", "Auto / Active / Dormant / Dormant waiver granted / Manual review；只作复核提醒。"),
+    ("年审文件方式", "Annual review method", "agm_route", "ordinary_agm", "默认", "通常不用改；ordinary_agm=普通 AGM，written_resolutions=书面年审，exempt_private_company/dispensed_with_agm=不召开 AGM。"),
+    ("财报状态", "Accounts status", "accounts_status", "", "核心选项", "留空=active；只用 active / dormant / audited。休眠填 dormant，已审计填 audited。"),
+    ("公司活动状态", "Company activity status", "company_activity_status", "", "可空", "兼容/复核字段；通常不用填，系统以 accounts_status 为准。"),
+    ("是否 ACRA 休眠相关公司", "ACRA dormant relevant company", "acra_dormant_relevant_company", "", "可空", "休眠公司复核用；通常留空。"),
+    ("资产是否不超过 50 万", "Total assets under S$500k", "total_assets_under_500k", "", "可空", "休眠公司复核用；通常留空。"),
+    ("是否需要财报", "Financial statements required", "financial_statements_required", "", "可空", "通常不用填；系统按 accounts_status 生成相应文件。"),
+    ("财报类型", "Financial statements type", "financial_statements_type", "", "可空", "兼容字段；通常不用填。普通年审由 accounts_status=active 控制。"),
+    ("审计/豁免状态", "Audit exemption status", "audit_exemption_status", "", "可空", "兼容/复核字段；通常不用填。"),
+    ("AGM 状态", "AGM status", "agm_status", "", "可空", "通常不用填；如不召开 AGM，可填 Dispensed with AGM / Exempt from AGM / Written resolutions。"),
+    ("IRAS 税务状态", "IRAS tax status", "iras_tax_status", "", "可空", "只作复核提醒；通常不用填。"),
     ("财报日期", "Financial statement date", "financial_statement_date", "", "默认 FYE", "留空默认财年结束日。"),
     ("董事签字人", "Director signer", "director_signer_name", "", "常用", "留空默认首页董事签字人。"),
     ("股东/成员签字人", "Shareholder signer", "shareholder_signer_name", "", "可空", "需要股东签署的年审文件使用。"),
@@ -457,10 +459,7 @@ def build_annual_sheet(wb: Workbook, sample: bool) -> None:
         "fye_date": "31/12/2025",
         "agm_date": "30/06/2026",
         "accounts_status": "active",
-        "company_activity_status": "Active",
-        "financial_statements_type": "Unaudited",
-        "financial_statements_required": "Yes",
-        "audit_exemption_status": "Small company exempt",
+        "agm_route": "ordinary_agm",
         "agm_status": "Held AGM",
         "director_signer_name": "ZHANG YI",
         "ar_authorized_signer_name": "ZHANG YI",
@@ -485,14 +484,14 @@ def build_annual_sheet(wb: Workbook, sample: bool) -> None:
         cell.font = WHITE_BOLD
         cell.alignment = WRAP
     add_kv_validation(ws, "annual_review_required", YES_NO)
-    add_kv_validation(ws, "agm_route", '"ordinary_agm,exempt_private_company,dormant_company,written_resolutions,manual"')
+    add_kv_validation(ws, "agm_route", '"ordinary_agm,written_resolutions,exempt_private_company,dispensed_with_agm,manual"')
     add_kv_validation(ws, "accounts_status", '"active,dormant,audited"')
-    add_kv_validation(ws, "company_activity_status", '"Active,Dormant"')
+    add_kv_validation(ws, "company_activity_status", '"Auto,Active,Dormant"')
     add_kv_validation(ws, "acra_dormant_relevant_company", YES_NO)
     add_kv_validation(ws, "total_assets_under_500k", YES_NO)
     add_kv_validation(ws, "financial_statements_required", YES_NO)
-    add_kv_validation(ws, "financial_statements_type", '"Auto,Unaudited,Audited,Dormant no FS,Management accounts,Not applicable"')
-    add_kv_validation(ws, "audit_exemption_status", '"Auto,Small company exempt,Audited,Dormant relevant,Manual review"')
+    add_kv_validation(ws, "financial_statements_type", '"Auto,Unaudited,Audited,Management accounts,Not applicable"')
+    add_kv_validation(ws, "audit_exemption_status", '"Auto,Small company exempt,Audited,Manual review"')
     add_kv_validation(ws, "agm_status", '"Auto,Held AGM,Dispensed with AGM,Exempt from AGM,Written resolutions,Manual review"')
     add_kv_validation(ws, "iras_tax_status", '"Auto,Active,Dormant,Dormant waiver granted,Manual review"')
     add_kv_validation(ws, "shorter_notice_consent", YES_NO)
@@ -510,10 +509,14 @@ def save_workbook(wb: Workbook, name: str) -> Path:
 
 
 def main() -> None:
-    paths = [
-        save_workbook(build_workbook(False), "AI适配_公司维护变更年审资料模板_v7_一页式快速业务单含快速年审_空白.xlsx"),
-        save_workbook(build_workbook(True), "AI适配_公司维护变更年审资料模板_v7_一页式快速业务单含快速年审_示例.xlsx"),
-    ]
+    blank = save_workbook(build_workbook(False), "AI适配_公司维护变更年审资料模板_v7_一页式快速业务单含快速年审_空白.xlsx")
+    sample = save_workbook(build_workbook(True), "AI适配_公司维护变更年审资料模板_v7_一页式快速业务单含快速年审_示例.xlsx")
+    IMPORT_OUT.mkdir(parents=True, exist_ok=True)
+    import_blank = IMPORT_OUT / "P2_maintenance_annual_blank_v7.xlsx"
+    import_sample = IMPORT_OUT / "P2_maintenance_annual_sample_v7.xlsx"
+    copyfile(blank, import_blank)
+    copyfile(sample, import_sample)
+    paths = [blank, sample, import_blank, import_sample]
     for path in paths:
         print(path)
 

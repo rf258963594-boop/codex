@@ -357,7 +357,7 @@ def build_stress_workbook() -> Path:
             "agm_time": "10.00 a.m.",
             "agm_place": old_address,
             "agm_route": "ordinary_agm",
-            "accounts_status": "non_dormant",
+            "accounts_status": "active",
             "financial_statement_date": "31/12/2025",
             "financial_year_start": "01/01/2025",
             "director_signer_name": "ALICE TAN",

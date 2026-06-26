@@ -114,12 +114,12 @@ TEMPLATE_NOTES = {
     "registration_human_sample": ("新公司注册 v3 示例", "给 AI 或人工参考填写方式"),
     "registration_blank": ("旧版注册 v2 横排表", "管理员保留，普通入口已隐藏"),
     "registration_sample": ("旧版注册 v2 示例", "管理员保留，普通入口已隐藏"),
-    "maintenance_blank": ("维护/变更/年审 v7 一页式业务单", "推荐：最少字段先生成文件，另含快速年审页；普通董事决议签字人支持多个董事"),
-    "maintenance_sample": ("维护/变更/年审 v7 示例", "示例含多个董事签字人、董事辞任、委任、可选转股和快速年审默认字段"),
+    "maintenance_blank": ("维护/变更/年审 v7 一页式业务单", "推荐：最少字段先生成文件；年审状态只用 active / dormant / audited"),
+    "maintenance_sample": ("维护/变更/年审 v7 示例", "示例含多个董事签字人、董事辞任、委任、转股、增资和年审 active 默认字段"),
     "maintenance_v5_blank": ("旧版 P2 v5 详情开关表", "管理员保留，适合需要更多结构化字段时使用"),
-    "maintenance_v5_sample": ("旧版 P2 v5 示例", "管理员保留，普通入口已改用 v6"),
-    "maintenance_v4_blank": ("旧版 P2 v4 竖排表", "管理员保留，适合完整资料库式导入"),
-    "maintenance_v4_sample": ("旧版 P2 v4 示例", "管理员保留，普通入口已改用 v5"),
+    "maintenance_v5_sample": ("旧版 P2 v5 示例", "管理员保留，普通入口已改用 v7"),
+    "maintenance_v4_blank": ("旧版 P2 v4 竖排表", "管理员保留，旧年审字段未按 v7 简化"),
+    "maintenance_v4_sample": ("旧版 P2 v4 示例", "管理员保留，普通入口已改用 v7"),
     "maintenance_legacy_blank": ("旧版 P2 v3 横排表", "管理员保留，普通入口已隐藏"),
     "maintenance_legacy_sample": ("旧版 P2 v3 横排示例", "管理员保留，普通入口已隐藏"),
     "p2_m01_dr": ("普通董事决议母版", "管理员维护；内部编号 M01"),
@@ -326,24 +326,25 @@ DOCUMENT_TEMPLATES = {
     },
     "p2_m05_agm_package": {
         "category": "年审 P2",
-        "name": "M05 AGM 文件包",
-        "version": "v0.2",
+        "name": "M05 年审签署合并包",
+        "version": "v0.4",
         "status": "启用",
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M05_agm_documents_package_standard.docx",
-        "note": "DR + 普通 AGM 或书面年审/AGM 豁免路线，内部编号 M05",
+        "note": "最终生成 1 份签署合并 PDF；包含 AGM/书面年审文件和 Annual Return 授权声明，内部编号 M05",
     },
     "p2_m05_annual_return_package": {
         "category": "年审 P2",
-        "name": "M05 Annual Return 授权声明包",
-        "version": "v0.3",
+        "name": "M05 Annual Return 授权声明母版",
+        "version": "v0.4",
         "status": "启用",
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M05_annual_return_authorisation_package_standard.docx",
-        "note": "AR review / Section 197 / 动态审计或休眠声明 / AR 授权 / MRL，内部编号 M05",
+        "note": "内部母版：生成时并入 M05 年审签署合并包，不作为独立 PDF 显示",
+        "hidden": True,
     },
     "p2_m05_checklist": {
         "category": "年审 P2",
         "name": "M05 年审内部复核清单",
-        "version": "v0.3",
+        "version": "v0.4",
         "status": "启用",
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M05_annual_review_checklist_standard.docx",
         "note": "内部复核清单，内部编号 M05",
@@ -356,6 +357,10 @@ TEMPLATE_BACKUP_DIR = DATA_DIR / "template_versions"
 
 def h(value: object) -> str:
     return html.escape(str(value or ""))
+
+
+def visible_document_template_items() -> list[tuple[str, dict[str, object]]]:
+    return [(key, meta) for key, meta in DOCUMENT_TEMPLATES.items() if not meta.get("hidden")]
 
 
 def display_time(value: object) -> str:
@@ -1254,7 +1259,7 @@ class App(BaseHTTPRequestHandler):
               <h3>模板库</h3>
               <p class="muted">Excel 导入模板给员工下载；正式签字文件模板只在管理员后台维护。上传新版会先生成草稿 PDF，确认后再启用。</p>
             </div>
-            <span class="badge">正式模板 {len(DOCUMENT_TEMPLATES)} 个</span>
+            <span class="badge">正式模板 {len(visible_document_template_items())} 个</span>
           </div>
           <h4>正式签字文件模板</h4>
           {document_template_sections}
@@ -2328,7 +2333,7 @@ def build_p2_form_parsed(fields: dict[str, list[str]], common_people: dict[str, 
         "agm_time": "10.00 a.m.",
         "agm_place": new_address or current_address,
         "agm_route": form_value(fields, "agm_route") or "ordinary_agm",
-        "accounts_status": form_value(fields, "accounts_status") or "non_dormant",
+        "accounts_status": form_value(fields, "accounts_status") or "active",
         "director_signer_name": company["director_signer_names"],
         "shareholder_signer_name": company["member_signer_names"],
         "ar_authorized_signer_name": company["director_signer_names"],
@@ -2495,7 +2500,8 @@ def admin_overview_html(users, people, rules, job_stats) -> str:
         for state in registry.values()
         if isinstance(state, dict) and isinstance(state.get("draft"), dict)
     )
-    missing_doc_templates = sum(1 for meta in DOCUMENT_TEMPLATES.values() if not meta["path"].exists())
+    visible_doc_templates = visible_document_template_items()
+    missing_doc_templates = sum(1 for _, meta in visible_doc_templates if not meta["path"].exists())
     total_jobs = int(job_stats["total_jobs"] or 0) if job_stats else 0
     blocked_jobs = int(job_stats["blocked_jobs"] or 0) if job_stats else 0
     pdf_jobs = int(job_stats["pdf_jobs"] or 0) if job_stats else 0
@@ -2503,7 +2509,7 @@ def admin_overview_html(users, people, rules, job_stats) -> str:
         ("用户账户", f"{active_users}/{len(users)} 启用", f"普通用户 {staff_users} 个"),
         ("常用人员", f"{active_people}/{len(people)} 启用", f"示例资料 {sample_people} 个"),
         ("导入表", f"{active_imports} 个正式入口", f"缺失 {missing_imports} 个"),
-        ("正式模板", f"{len(DOCUMENT_TEMPLATES) - missing_doc_templates}/{len(DOCUMENT_TEMPLATES)} 可用", f"待启用草稿 {draft_templates} 个"),
+        ("正式模板", f"{len(visible_doc_templates) - missing_doc_templates}/{len(visible_doc_templates)} 可用", f"待启用草稿 {draft_templates} 个"),
         ("文件规则", f"{len(rules)} 条", "用于判断文件包和签字逻辑"),
         ("生成任务", f"{total_jobs} 个历史任务", f"已生成 PDF {pdf_jobs} 个；需修正 {blocked_jobs} 个"),
     ]
@@ -2562,7 +2568,7 @@ def template_library_row(key: str, label: str, path: Path, archived: bool = Fals
 def document_template_sections_html() -> str:
     registry = load_template_registry()
     grouped: dict[str, list[str]] = {}
-    for key, meta in DOCUMENT_TEMPLATES.items():
+    for key, meta in visible_document_template_items():
         category = str(meta["category"])
         grouped.setdefault(category, []).append(document_template_row_html(key, meta, registry))
     sections = []
@@ -2589,7 +2595,7 @@ def document_template_sections_html() -> str:
 def document_template_rows_html() -> str:
     registry = load_template_registry()
     rows = []
-    for key, meta in DOCUMENT_TEMPLATES.items():
+    for key, meta in visible_document_template_items():
         rows.append(document_template_row_html(key, meta, registry, include_category=True))
     return "".join(rows) or '<tr><td colspan="6">暂无正式文件模板</td></tr>'
 

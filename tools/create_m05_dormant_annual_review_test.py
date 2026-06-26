@@ -32,7 +32,7 @@ COMPANY_FIELDS = {
     "annual_review_required": "Yes",
     "fye_date": "31/12/2025",
     "agm_date": "30/06/2026",
-    "annual_review_remarks": "Dormant company test: no financial statements route and AGM exempt / written review route.",
+    "annual_review_remarks": "Dormant company test: accounts_status=dormant with AGM exempt / written review documents.",
 }
 
 ANNUAL_FIELDS = {
@@ -41,12 +41,12 @@ ANNUAL_FIELDS = {
     "agm_date": "30/06/2026",
     "agm_time": "10.00 a.m.",
     "agm_place": "111 NORTH BRIDGE ROAD, #29-06A, PENINSULA PLAZA, SINGAPORE 179098",
-    "agm_route": "dormant_company",
+    "agm_route": "exempt_private_company",
     "accounts_status": "dormant",
-    "company_activity_status": "Dormant",
-    "financial_statements_type": "Dormant no FS",
+    "company_activity_status": "",
+    "financial_statements_type": "",
     "financial_statements_required": "No",
-    "audit_exemption_status": "Dormant relevant",
+    "audit_exemption_status": "",
     "agm_status": "Exempt from AGM",
     "acra_dormant_relevant_company": "Yes",
     "total_assets_under_500k": "Yes",

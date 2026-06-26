@@ -2181,7 +2181,7 @@ def normalize_m05_annual(raw: dict[str, Any], company: dict[str, Any]) -> dict[s
         "agm_place": agm_place,
         "agm_route": clean(annual.get("agm_route") or "ordinary_agm"),
         "company_activity_status": clean(annual.get("company_activity_status") or annual.get("activity_status") or ""),
-        "accounts_status": clean(annual.get("accounts_status") or "non_dormant"),
+        "accounts_status": clean(annual.get("accounts_status") or "active"),
         "financial_statements_type": clean(annual.get("financial_statements_type") or annual.get("financial_statement_type") or ""),
         "financial_statements_required": clean(annual.get("financial_statements_required") or ""),
         "audit_exemption_status": clean(annual.get("audit_exemption_status") or ""),
