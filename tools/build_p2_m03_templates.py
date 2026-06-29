@@ -308,7 +308,14 @@ def marker(doc: Document, text: str) -> None:
     add_para(doc, text, size=1, color=RGBColor(0xFF, 0xFF, 0xFF), after=0)
 
 
-def add_table(doc: Document, headers: list[str], rows: list[list[str]], widths: list[int]) -> None:
+def add_table(
+    doc: Document,
+    headers: list[str],
+    rows: list[list[str]],
+    widths: list[int],
+    *,
+    body_alignments: list[WD_ALIGN_PARAGRAPH | None] | None = None,
+) -> None:
     table = doc.add_table(rows=1 + len(rows), cols=len(headers))
     set_table_width(table, widths)
     set_table_borders(table)
@@ -317,9 +324,10 @@ def add_table(doc: Document, headers: list[str], rows: list[list[str]], widths: 
         cell = table.cell(0, idx)
         shade_cell(cell, LIGHT_FILL)
         set_cell_text(cell, header, bold=True, size=9.2, align=WD_ALIGN_PARAGRAPH.CENTER)
+    alignments = body_alignments or [None] * len(headers)
     for row_idx, row in enumerate(rows, start=1):
         for col_idx, value in enumerate(row):
-            set_cell_text(table.cell(row_idx, col_idx), value, size=9.2)
+            set_cell_text(table.cell(row_idx, col_idx), value, size=9.2, align=alignments[col_idx])
     doc.add_paragraph().paragraph_format.space_after = Pt(4)
 
 
@@ -336,7 +344,15 @@ def add_transfer_table(doc: Document) -> None:
             "{{transfer.transfer_date}}",
             "{{transfer.consideration_and_certificate_text}}",
         ]],
-        [1580, 1580, 1100, 1160, 1260, 2680],
+        [1550, 1550, 900, 1450, 1450, 2460],
+        body_alignments=[
+            None,
+            None,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            None,
+        ],
     )
 
 

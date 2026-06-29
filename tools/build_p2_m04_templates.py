@@ -69,7 +69,15 @@ def add_allotment_table(doc: Document) -> None:
             "{{allotment.paid_up_share_capital_text}}",
             "{{allotment.allotment_date}}",
         ]],
-        [2100, 1050, 1100, 1550, 1550, 1610],
+        [2050, 950, 1200, 1650, 1650, 1860],
+        body_alignments=[
+            None,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+        ],
     )
 
 
@@ -85,7 +93,14 @@ def add_form24_allottee_table(doc: Document) -> None:
             "{{allotment.form24_allotment_text}}",
             "{{allotment.allotment_date}}",
         ]],
-        [1900, 2500, 1450, 2460, 1000],
+        [1600, 1950, 1900, 2310, 1600],
+        body_alignments=[
+            None,
+            None,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            None,
+            WD_ALIGN_PARAGRAPH.CENTER,
+        ],
     )
 
 

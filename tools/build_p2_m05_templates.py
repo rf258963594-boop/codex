@@ -7,6 +7,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from build_p2_m03_templates import (
+    LIGHT_FILL,
     OUTPUT_DIR,
     TEMPLATE_DIR,
     add_company_header,
@@ -21,6 +22,7 @@ from build_p2_m03_templates import (
     set_row_cant_split,
     set_table_borders,
     set_table_width,
+    shade_cell,
 )
 
 
@@ -80,6 +82,31 @@ def add_checklist_table(doc: Document) -> None:
         [["{{check.item}}", "{{check.status}}", "{{check.note}}"]],
         [2350, 1450, 5560],
     )
+
+
+def add_summary_table(
+    doc: Document,
+    headers: list[str],
+    row: list[str],
+    widths: list[int],
+    *,
+    body_alignments: list[WD_ALIGN_PARAGRAPH | None] | None = None,
+) -> None:
+    table = doc.add_table(rows=2, cols=len(headers))
+    table.autofit = False
+    set_table_width(table, widths)
+    set_table_borders(table)
+    set_cell_margins(table, top=100, bottom=100, start=130, end=130)
+    for table_row in table.rows:
+        set_row_cant_split(table_row)
+    for idx, header in enumerate(headers):
+        cell = table.cell(0, idx)
+        shade_cell(cell, LIGHT_FILL)
+        set_cell_text(cell, header, bold=True, size=9.0, align=WD_ALIGN_PARAGRAPH.CENTER)
+    alignments = body_alignments or [None] * len(row)
+    for idx, value in enumerate(row):
+        set_cell_text(table.cell(1, idx), value, bold=True, size=9.1, align=alignments[idx])
+    doc.add_paragraph().paragraph_format.space_after = 8
 
 
 def add_directors_resolution(doc: Document) -> None:
@@ -260,23 +287,36 @@ def build_agm_package() -> Document:
 
 def add_annual_return_review_summary(doc: Document) -> None:
     add_company_header(doc, "ANNUAL RETURN REVIEW SUMMARY")
-    add_table(
+    add_summary_table(
         doc,
         ["Company name", "UEN", "Registered office"],
-        [["{{company.company_name}}", "{{company.uen}}", "{{company.registered_office_address}}"]],
-        [3100, 1800, 4460],
+        ["{{company.company_name}}", "{{company.uen}}", "{{company.registered_office_address}}"],
+        [3300, 1700, 4360],
+        body_alignments=[None, WD_ALIGN_PARAGRAPH.CENTER, None],
     )
-    add_table(
+    add_summary_table(
         doc,
         ["FYE", "AGM date", "Financial statements date", "Accounts status"],
-        [["{{m05.fye_date}}", "{{m05.agm_date}}", "{{m05.financial_statement_date_display}}", "{{m05.accounts_status_label}}"]],
-        [1850, 1850, 2600, 2060],
+        ["{{m05.fye_date}}", "{{m05.agm_date}}", "{{m05.financial_statement_date_display}}", "{{m05.accounts_status_label}}"],
+        [1900, 1900, 3100, 2460],
+        body_alignments=[
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+        ],
     )
-    add_table(
+    add_summary_table(
         doc,
         ["Issued shares", "Issued share capital", "Paid-up capital", "Currency"],
-        [["{{company.total_issued_shares}}", "{{company.issued_share_capital}}", "{{company.paid_up_capital}}", "{{company.currency}}"]],
-        [2200, 2700, 2400, 960],
+        ["{{company.total_issued_shares}}", "{{company.issued_share_capital}}", "{{company.paid_up_capital}}", "{{company.currency}}"],
+        [2200, 2900, 2500, 1760],
+        body_alignments=[
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+        ],
     )
     clause_para(
         doc,
@@ -386,11 +426,17 @@ def build_checklist() -> Document:
     doc = Document()
     configure_doc(doc, "M05 Annual Review Checklist", "P2 annual review internal checklist")
     add_company_header(doc, "ANNUAL REVIEW INTERNAL CHECKLIST")
-    add_table(
+    add_summary_table(
         doc,
         ["FYE", "AGM date", "Annual review method", "Accounts status"],
-        [["{{m05.fye_date}}", "{{m05.agm_date}}", "{{m05.agm_mode_label}}", "{{m05.accounts_status_label}}"]],
-        [1800, 1800, 2500, 2260],
+        ["{{m05.fye_date}}", "{{m05.agm_date}}", "{{m05.agm_mode_label}}", "{{m05.accounts_status_label}}"],
+        [1900, 1900, 3100, 2460],
+        body_alignments=[
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+            WD_ALIGN_PARAGRAPH.CENTER,
+        ],
     )
     add_checklist_table(doc)
     add_para(
