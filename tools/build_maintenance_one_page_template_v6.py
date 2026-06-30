@@ -65,6 +65,9 @@ KV_FIELDS = [
     ("新 FYE", "New FYE", "new_fye", "", "FYE 变更时填", "DD/MM/YYYY。"),
     ("下个账期开始", "Next accounts period start", "next_accounts_period_start", "", "可空", ""),
     ("下个账期结束", "Next accounts period end", "next_accounts_period_end", "", "可空", ""),
+    ("是否公司更名", "Change company name", "change_company_name_required", "", "默认 Auto", "留空/Auto 时，填写新公司名称即可生成 M02 股东决议包；填 No 则不生成。"),
+    ("新公司名称", "New company name", "new_company_name", "", "公司更名时填", "只填新英文法定名称；系统使用当前公司名称作为旧名称。"),
+    ("公司更名日期", "Name change resolution date", "company_name_change_effective_date", "", "可空", "DD/MM/YYYY；留空默认文件日期。"),
     ("是否转入秘书公司", "Transfer-in required", "transfer_in_required", "", "需要时填 Yes", "转入需要时填 Yes；M01 正常出，M02 一律兜底。"),
     ("转入模式", "Transfer-in mode", "transfer_in_mode", "", "内部预留", "通常留空；系统不再要求区分配合/不配合。"),
     ("旧秘书公司", "Old secretary firm", "old_secretary_company", "", "可空", ""),
@@ -188,6 +191,7 @@ def sample_values() -> dict[str, Any]:
         "change_registered_office_required": "No",
         "change_business_activity_required": "No",
         "change_fye_required": "No",
+        "change_company_name_required": "No",
         "transfer_in_required": "No",
         "annual_review_required": "No",
     }
@@ -393,6 +397,7 @@ def build_workbook(sample: bool) -> Workbook:
     add_kv_validation(ws, "change_registered_office_required", YES_NO)
     add_kv_validation(ws, "change_business_activity_required", YES_NO)
     add_kv_validation(ws, "change_fye_required", YES_NO)
+    add_kv_validation(ws, "change_company_name_required", YES_NO)
     add_kv_validation(ws, "transfer_in_required", YES_NO)
     add_kv_validation(ws, "generate_resignation_letter", YES_NO)
     add_kv_validation(ws, "annual_review_required", YES_NO)

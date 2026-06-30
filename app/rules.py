@@ -332,7 +332,7 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
 
     blocking_errors: list[str] = []
     warnings: list[str] = []
-    info: list[str] = ["公司维护/变更/年审表已支持普通董事决议、转入文件、股份转让、增资配股和年审文件包生成。"]
+    info: list[str] = ["公司维护/变更/年审表已支持普通董事决议、M02 股东决议/转入文件、股份转让、增资配股和年审文件包生成。"]
     files: list[dict[str, Any]] = []
     preview: list[dict[str, Any]] = []
     detected: list[str] = []
@@ -346,6 +346,7 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
     egm_items: list[str] = []
     resignation_letters: list[str] = []
     transfer_in_items: list[str] = []
+    company_name_change_items: list[str] = []
     high_risk_items: list[str] = []
 
     for row in events:
@@ -359,6 +360,8 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
             egm_items.append(label)
         if event_type.startswith("transfer_in"):
             transfer_in_items.append(label)
+        if event_type == "change_company_name":
+            company_name_change_items.append(label)
         if event_type in {"resign_director", "resign_secretary"} and is_yes(row.get("resignation_letter")):
             resignation_letters.append(label)
         if is_yes(row.get("manual_review_required")) or event_type in {"remove_director", "change_company_name", "strike_off"}:
@@ -387,7 +390,7 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
     )
     if (dr_groups or transfers or allotments or annual_required) and not director_signer_hint and not has_director_candidate:
         warnings.append("缺少董事签字人。系统可以生成文件，但董事签字栏可能为空，请在表格填写 director_signer_names 或在人员资料中标记董事。")
-    if (transfer_in_items or allotments or annual_required) and not member_signer_hint and not has_client_candidate:
+    if (transfer_in_items or company_name_change_items or allotments or annual_required) and not member_signer_hint and not has_client_candidate:
         warnings.append("缺少股东/客户授权签字人。系统可以生成文件，但股东或客户授权签字栏可能为空，请填写 member_signer_names 或 client_signatory_name。")
 
     if dr_groups:
@@ -417,9 +420,13 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
             files.append(file_item("Resignation Letter", "表格选择了 resignation_letter=Yes", "离任董事/秘书签署", "Yes", manual_review=True, package="董事/秘书任免包", doc_type="Letter"))
             preview.append(preview_item("董事/秘书任免包可选辞职信", len(resignation_letters), "按离任人员分别生成", "、".join(resignation_letters)))
 
+    if company_name_change_items and transfer_in_items:
+        files.append(file_item("M02 Company Name Change Resolution Pack", "公司更名特别决议：" + "、".join(company_name_change_items), "股东/成员签署；董事签召开 EGM 决议", "Yes", manual_review=True, package="股东决议包", doc_type="M02 EGM/WR"))
+        preview.append(preview_item("股东决议包", 1, "M02 公司更名 EGM / 特别决议", "、".join(company_name_change_items)))
+
     if egm_items and not transfer_in_items:
-        files.append(file_item("EGM / Members' Written Resolution Pack", "股东层面事项： " + "、".join(egm_items), "股东签署", "Yes", manual_review=True, package="股东决议包", doc_type="EGM/WR"))
-        preview.append(preview_item("股东决议包", 1, "EGM 或股东书面决议", "、".join(egm_items)))
+        files.append(file_item("M02 EGM / Members' Resolution Pack", "股东层面事项： " + "、".join(egm_items), "股东/成员签署", "Yes", manual_review=True, package="股东决议包", doc_type="M02 EGM/WR"))
+        preview.append(preview_item("股东决议包", 1, "M02 EGM 或股东书面决议", "、".join(egm_items)))
 
     if transfers:
         detected.append("share_transfer")
@@ -504,11 +511,12 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
             "package_count": len(package_names),
             "ordinary_dr_groups": len(dr_groups),
             "m01_available": "Yes" if dr_groups else "No",
-            "m02_available": "Yes" if transfer_in_items else "No",
+            "m02_available": "Yes" if (transfer_in_items or company_name_change_items) else "No",
             "m03_available": "Yes" if transfers else "No",
             "m04_available": "Yes" if allotments else "No",
             "m05_available": "Yes" if annual_required else "No",
             "transfer_in": "Yes" if transfer_in_items else "No",
+            "company_name_change": "Yes" if company_name_change_items else "No",
             "share_transfers": len(transfers),
             "share_allotments": len(allotments),
             "annual_review": "Yes" if annual_required else "No",
@@ -544,6 +552,7 @@ def active_change_event(row: dict[str, Any]) -> bool:
             "new_fye",
             "new_office_hours",
             "field_label",
+            "new_company_name",
         ],
     )
 

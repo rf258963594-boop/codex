@@ -3,6 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SpreadsheetFile, Workbook } from "@oai/artifact-tool";
 
+process.on("uncaughtException", (error) => {
+  console.error(error?.stack || error);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (error) => {
+  console.error(error?.stack || error);
+  process.exit(1);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(__filename), "..");
 const OUT = path.join(ROOT, "outputs");
@@ -43,6 +53,9 @@ const companyFields = [
   ["代理/代办人", "Agent person_id", "agent_person_id", "", "Optional", "可空；联系人不是董事/股东时使用。"],
   ["客户方签字人", "Client signer person_id", "client_signatory_person_id", "", "Optional", "填写人员编号时优先作为服务协议/挂名董事协议的客户方签字人；留空默认股东1。"],
   ["授权代表", "Authorised rep person_id", "authorized_representative_person_id", "", "Optional", "可空；企业股东或代理场景使用。"],
+  ["挂名董事提名人姓名覆盖", "Nominee director nominator name override", "nominee_director_nominator_name", "", "Optional", "通常留空；系统默认第一个客户董事。特殊情况才填写。"],
+  ["挂名董事提名人证件号覆盖", "Nominee director nominator ID override", "nominee_director_nominator_id_number", "", "Optional", "通常留空；与上方姓名一起用于 M06 register。"],
+  ["挂名董事提名人地址覆盖", "Nominee director nominator address override", "nominee_director_nominator_address", "", "Optional", "通常留空；与上方姓名一起用于 M06 register。"],
   ["任务类型", "Task type", "task_type", "incorporation", "System", "固定值，不要修改。"],
   ["内部备注", "Internal remarks", "remarks", "", "Optional", "不进入正式文件。"],
 ];
@@ -86,6 +99,13 @@ const shareholderFields = [
   ["币种", "Currency", "currency", "留空默认 SGD"],
   ["证书编号覆盖", "Certificate no. override", "certificate_no", "通常留空，系统自动编号"],
   ["签署确认/系统保留", "Signing acknowledgement / system", "signing_required", "通常留空=Auto；系统按股东表生成股权证书、Form 24、RORC"],
+  ["是否登记控制人覆盖", "Registrable controller override", "is_registrable_controller", "通常留空=Auto；系统按 25% 股权规则判断。特殊情况可填 Yes/No"],
+  ["控制人依据覆盖", "Controller basis override", "controller_basis", "通常留空；特殊控制权安排才填写"],
+  ["控制人登记日期", "Controller entry date", "controller_start_date", "通常留空=注册日期"],
+  ["是否挂名股东", "Nominee shareholder", "is_nominee_shareholder", "通常留空=No；只有 nominee shareholder 情况填 Yes"],
+  ["挂名股东提名人/受益人", "Nominee shareholder nominator / beneficial owner", "nominee_shareholder_nominator_name", "通常留空；只有挂名股东情况填写"],
+  ["挂名股东提名人证件号", "Nominee shareholder nominator ID", "nominee_shareholder_nominator_id_number", "通常留空"],
+  ["挂名股东提名人地址", "Nominee shareholder nominator address", "nominee_shareholder_nominator_address", "通常留空"],
   ["备注", "Remarks", "remarks", ""],
 ];
 
@@ -190,7 +210,7 @@ function buildReadme(wb) {
     ["默认值", "FYE、办公时间、证书编号、总股数、实缴金额等可由系统默认或计算。", "FYE, office hours, certificate numbers and totals can be defaulted/calculated."],
     ["日期格式", "表格建议用新加坡常用 DD/MM/YYYY；系统仍兼容 YYYY-MM-DD。正式文书会自动转成 1st JUNE 2026 这类日月年英文表述。", "Use DD/MM/YYYY in the sheet. The system also accepts YYYY-MM-DD and renders formal documents as day-month-year wording."],
     ["P1 日期规则", "P1 全套文件统一使用注册日期 incorporation_date。即使填写 document_date、signature_date 或 appointment_date，系统也会按注册日期生成。", "All P1 documents use incorporation_date. document_date, signature_date and appointment_date are ignored for P1."],
-    ["复核重点", "上传后检查董事、秘书、股东股份合计、RORC 控制人、Form 24 和股权证书签字逻辑。", "Review directors, secretary, share totals, RORC, Form 24 and certificate signing."],
+    ["复核重点", "上传后检查董事、秘书、股东股份合计、RORC 控制人、M06 registers、Form 24 和股权证书签字逻辑。", "Review directors, secretary, share totals, RORC, M06 registers, Form 24 and certificate signing."],
     ["兼容性", "网站仍支持旧 v2 横排模板；v3 是推荐主入口。", "The website still supports v2. v3 is the recommended entry."],
     ["注意", "不要删除 field_key 行列；不要合并填写区；正式英文姓名字段不要填中文名，也不要加 Director/Shareholder/客户董事等身份说明。", "Do not delete field_key rows/columns, merge input cells, or add role descriptions to legal names."],
   ];
@@ -348,14 +368,18 @@ async function buildWorkbook(sample) {
   addList(peopleSheet, "E5:N5", ["new", "common"]);
   addList(peopleSheet, "E15:N21", ["Auto", "Yes", "No"]);
   addList(shareholderSheet, "E4:N4", ["person", "corporate"]);
+  addList(shareholderSheet, "E18:N19", ["Auto", "Yes", "No"]);
+  addList(shareholderSheet, "E22:N22", ["Auto", "Yes", "No"]);
 
-  await wb.render({ sheetName: "公司信息", range: "A1:F24", scale: 1, format: "png" });
-  await wb.inspect({
-    kind: "match",
-    searchTerm: "#REF!|#DIV/0!|#VALUE!|#NAME\\?|#N/A",
-    options: { useRegex: true, maxResults: 50 },
-    summary: "formula error scan",
-  });
+  if (!process.env.SKIP_ARTIFACT_PREVIEW) {
+    await wb.render({ sheetName: "公司信息", range: "A1:F32", scale: 1, format: "png" });
+    await wb.inspect({
+      kind: "match",
+      searchTerm: "#REF!|#DIV/0!|#VALUE!|#NAME\\?|#N/A",
+      options: { useRegex: true, maxResults: 50 },
+      summary: "formula error scan",
+    });
+  }
   return wb;
 }
 

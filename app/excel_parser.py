@@ -398,6 +398,7 @@ EVENT_NAME_CN = {
     "change_office_hours": "办公时间变更",
     "change_business_activity": "营业范围/SSIC 变更",
     "change_fye": "财政年结日变更",
+    "change_company_name": "公司更名",
     "update_officer_particulars": "人员资料更新",
     "appoint_director": "委任董事",
     "resign_director": "董事辞任",
@@ -781,6 +782,22 @@ def quick_company_change_events(company: dict[str, Any], fields: dict[str, Any],
                 "change_office_hours",
                 quick_task_date(task_flags, "change_office_hours", company, fields.get("office_hours_effective_date")),
                 new_value=fields.get("new_office_hours"),
+            )
+        )
+    if quick_detail_enabled(fields, "change_company_name_required", task_flags, "change_company_name", ["new_company_name"]):
+        events.append(
+            quick_event(
+                "change_company_name",
+                quick_task_date(task_flags, "change_company_name", company, fields.get("company_name_change_effective_date")),
+                approval_route="EGM",
+                document_group="M02-CN-001",
+                combine_in_dr="No",
+                old_value=fields.get("old_company_name") or company.get("company_name"),
+                new_value=fields.get("new_company_name"),
+                new_company_name=fields.get("new_company_name"),
+                meeting_time=fields.get("egm_meeting_time"),
+                meeting_place=fields.get("egm_meeting_place"),
+                manual_review_required="Yes",
             )
         )
     return events

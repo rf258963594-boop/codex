@@ -212,6 +212,14 @@ DOCUMENT_TEMPLATES = {
         "path": DOC_TEMPLATE_DIR / "p1_standard_v3_part1" / "10_paid_up_capital_confirmation_standard.docx",
         "note": "客户方董事签署的实缴资本确认书",
     },
+    "p1_m06_statutory_registers_package": {
+        "category": "注册 P1",
+        "name": "M06 Statutory Registers Pack",
+        "version": "v0.1",
+        "status": "启用",
+        "path": DOC_TEMPLATE_DIR / "p1_standard_v3_part1" / "11_statutory_registers_package_standard.docx",
+        "note": "成员、董事、秘书、控制人、挂名董事/股东、股权证书登记合并包",
+    },
     "p2_m01_ordinary_dr": {
         "category": "变更 P2",
         "name": "普通董事决议",
@@ -222,11 +230,19 @@ DOCUMENT_TEMPLATES = {
     },
     "p2_m02_resolution_package": {
         "category": "变更 P2",
-        "name": "M02 EGM Notice / Resolutions",
+        "name": "M02 EGM / Members Resolution",
         "version": "v0.3",
         "status": "启用",
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M02_resolution_package_transfer_in_standard.docx",
-        "note": "Notice / Shorter Notice / Members' Resolution / Directors' Resolution，内部编号 M02",
+        "note": "转入用 Notice / Shorter Notice / Members' Resolution / Directors' Resolution，内部编号 M02",
+    },
+    "p2_m02_company_name_change_package": {
+        "category": "变更 P2",
+        "name": "M02 公司更名 EGM 决议包",
+        "version": "v0.1",
+        "status": "启用",
+        "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M02_company_name_change_resolution_standard.docx",
+        "note": "公司更名用董事召开 EGM 决议 + 出席表 + EGM 特别决议，内部编号 M02",
     },
     "p2_m02_handover_resignation_package": {
         "category": "变更 P2",
@@ -954,7 +970,7 @@ class App(BaseHTTPRequestHandler):
         generated_packages = [
             ("P1 注册文件包", generated_zip),
             ("M01 普通变更 DR 包", generated_m01_zip),
-            ("M02 转入文件包", generated_m02_zip),
+            ("M02 股东决议/转入文件包", generated_m02_zip),
             ("M03 股份转让包", generated_m03_zip),
             ("M04 增资配股包", generated_m04_zip),
             ("M05 年审文件包", generated_m05_zip),
@@ -1075,7 +1091,7 @@ class App(BaseHTTPRequestHandler):
                 <div class="stack">
                   {''.join(maintenance_forms)}
                 </div>
-                <p class="muted">已接入普通董事决议、转入文件、股份转让、增资配股和年审文件包。</p>
+                <p class="muted">已接入普通董事决议、M02 股东决议/转入文件、股份转让、增资配股和年审文件包。</p>
                 """
             elif row["task_type"] == "maintenance":
                 generate_control = "<p class='muted'>这张表没有识别到已接入生成器的事项；文件包先保留为预览。</p>"
@@ -1492,11 +1508,11 @@ class App(BaseHTTPRequestHandler):
         suggestions = json.loads(row["suggestions_json"])
         errors = suggestions.get("summary", {}).get("blocking_errors", [])
         if row["task_type"] != "maintenance":
-            return self.error_page(HTTPStatus.BAD_REQUEST, "转入包生成只支持公司维护/变更年审表。")
+            return self.error_page(HTTPStatus.BAD_REQUEST, "M02 生成只支持公司维护/变更年审表。")
         if errors:
             return self.error_page(HTTPStatus.BAD_REQUEST, "存在严重错误，请先修改 Excel 后重新上传。")
         if suggestions.get("summary", {}).get("m02_available") != "Yes":
-            return self.error_page(HTTPStatus.BAD_REQUEST, "没有识别到可生成转入包的事项。")
+            return self.error_page(HTTPStatus.BAD_REQUEST, "没有识别到可生成 M02 股东决议/转入包的事项。")
         if is_generation_status(row["status"]):
             return self.redirect(f"/job?id={job_id}")
         self.queue_pdf_generation(user["id"], row, parsed, generate_p2_m02_pdf_package, "p2_m02_generating_pdf", "p2_m02_pdf_generated", "generate_p2_m02_pdf_package")
@@ -2393,6 +2409,7 @@ P2_EVENT_CN = {
     "change_registered_office": "注册地址变更",
     "change_business_activity": "营业范围/SSIC 变更",
     "change_fye": "财年日变更",
+    "change_company_name": "公司更名",
     "appoint_director": "委任董事",
     "resign_director": "董事辞任",
     "appoint_secretary": "委任秘书",
@@ -3053,7 +3070,7 @@ def package_code(package_name: str, task_type: str = "") -> str:
     return {
         "普通变更 DR 包": "M01",
         "转入包": "M02",
-        "股东决议包": "M02/MR",
+        "股东决议包": "M02",
         "董事/秘书任免包": "M01",
         "股份转让包": "M03",
         "增资配股包": "M04",
@@ -3067,7 +3084,7 @@ def generate_button_label(code: str, user: dict | None) -> str:
     labels = {
         "P1": "生成注册文件 PDF 包",
         "M01": "生成普通变更董事决议 PDF 包",
-        "M02": "生成转入文件 PDF 包",
+        "M02": "生成 M02 股东决议/转入 PDF 包",
         "M03": "生成股份转让 PDF 包",
         "M04": "生成增资配股 PDF 包",
         "M05": "生成年审 PDF 包",
@@ -3082,7 +3099,7 @@ def download_label(code: str, user: dict | None) -> str:
     labels = {
         "P1": "下载注册文件 PDF 包",
         "M01": "下载普通变更董事决议 PDF 包",
-        "M02": "下载转入文件 PDF 包",
+        "M02": "下载 M02 股东决议/转入 PDF 包",
         "M03": "下载股份转让 PDF 包",
         "M04": "下载增资配股 PDF 包",
         "M05": "下载年审 PDF 包",
@@ -3154,6 +3171,7 @@ def package_status_cards(files: list[dict[str, object]], summary: dict[str, obje
         available = (
             (package == "普通变更 DR 包" and summary.get("m01_available") == "Yes")
             or (package == "转入包" and summary.get("m02_available") == "Yes")
+            or (package == "股东决议包" and summary.get("m02_available") == "Yes")
             or (package == "股份转让包" and summary.get("m03_available") == "Yes")
             or (package == "增资配股包" and summary.get("m04_available") == "Yes")
             or (package == "年审包" and summary.get("m05_available") == "Yes")
@@ -3644,14 +3662,14 @@ def status_label(status: str) -> str:
         "p2_m01_generated": "已生成普通董事决议",
         "generating_pdf": "正在生成 PDF",
         "p2_m01_generating_pdf": "正在生成普通董事决议 PDF",
-        "p2_m02_generating_pdf": "正在生成转入文件 PDF",
+        "p2_m02_generating_pdf": "正在生成 M02 股东决议/转入 PDF",
         "p2_m03_generating_pdf": "正在生成股份转让 PDF",
         "p2_m04_generating_pdf": "正在生成增资配股 PDF",
         "p2_m05_generating_pdf": "正在生成年审 PDF",
         "generation_failed": "生成失败，可重试",
         "pdf_generated": "已生成 PDF 包",
         "p2_m01_pdf_generated": "已生成普通董事决议 PDF",
-        "p2_m02_pdf_generated": "已生成转入文件 PDF",
+        "p2_m02_pdf_generated": "已生成 M02 股东决议/转入 PDF",
         "p2_m03_pdf_generated": "已生成股份转让 PDF",
         "p2_m04_pdf_generated": "已生成增资配股 PDF",
         "p2_m05_pdf_generated": "已生成年审 PDF",

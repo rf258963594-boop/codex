@@ -21,6 +21,7 @@ OUTPUT_DIR = ROOT / "outputs" / "P2_standard_templates_v1"
 TEMPLATES = {
     "resolution_package": "M02_resolution_package_transfer_in_standard.docx",
     "handover_resignation_package": "M02_handover_and_resignation_package_standard.docx",
+    "company_name_change_package": "M02_company_name_change_resolution_standard.docx",
 }
 
 BASE_FONT = "Calibri"
@@ -372,10 +373,83 @@ def build_handover_resignation_package() -> Document:
     return doc
 
 
-def field_map_text() -> str:
-    return """# M02 Transfer-In Package - Field Map
+def build_company_name_change_package() -> Document:
+    doc = Document()
+    configure_doc(doc, "M02 Company Name Change Resolution Package", "P2 company name change EGM and special resolution template")
 
-M02 is the transfer-in package for changing or transferring the corporate secretarial administration of an existing Singapore company.
+    add_company_header(doc, "DIRECTORS' RESOLUTION IN WRITING")
+    add_para(doc, "Pursuant to the Constitution of the Company", align=WD_ALIGN_PARAGRAPH.CENTER, size=10.5, after=12)
+    add_key_value_table(
+        doc,
+        [
+            ("Current company name", "{{m02.old_company_name}}"),
+            ("Proposed new company name", "{{m02.new_company_name}}"),
+            ("Meeting / signing venue", "{{m02.name_change_meeting_place}}"),
+            ("Resolution date", "{{m02.name_change_resolution_date}}"),
+        ],
+    )
+    clause_title(doc, "Convening of Extraordinary General Meeting")
+    clause_para(doc, "IT WAS RESOLVED -")
+    clause_para(
+        doc,
+        "THAT an Extraordinary General Meeting of the Company be convened and held on {{m02.name_change_resolution_date_upper}} at {{m02.name_change_meeting_time}} at {{m02.name_change_meeting_place}} for the purpose of considering and, if thought fit, passing the special resolution relating to the change of the Company's name.",
+    )
+    clause_title(doc, "Special Resolution - Change of Company Name")
+    clause_para(doc, "IT WAS RESOLVED -")
+    clause_para(
+        doc,
+        "THAT subject to the approval of the Accounting and Corporate Regulatory Authority and the issue of the notice of incorporation on change of name, the name of the Company be changed from {{m02.old_company_name}} to {{m02.new_company_name}}, and that {{m02.new_company_name}} be substituted for {{m02.old_company_name}} wherever the latter name appears in the Constitution and statutory records of the Company.",
+    )
+    add_para(doc, "Dated this {{m02.name_change_resolution_date}}", after=16)
+    add_signature_text(doc, "Signed by the Director(s)", "{{m02.name_change_director_signature_blocks}}")
+
+    doc.add_page_break()
+    add_company_header(doc, "ATTENDANCE SHEET")
+    clause_para(
+        doc,
+        "Attendance at the Extraordinary General Meeting of the Company held on {{m02.name_change_resolution_date_upper}} at {{m02.name_change_meeting_time}} at {{m02.name_change_meeting_place}}.",
+    )
+    add_para(doc, "Dated this {{m02.name_change_resolution_date}}", after=16)
+    clause_title(doc, "Present")
+    add_signature_text(doc, "Member(s) / Authorised Signatory", "{{m02.name_change_member_signature_blocks}}")
+
+    doc.add_page_break()
+    add_company_header(doc, "MINUTES OF EXTRAORDINARY GENERAL MEETING")
+    add_key_value_table(
+        doc,
+        [
+            ("Date and time", "{{m02.name_change_resolution_date_upper}} at {{m02.name_change_meeting_time}}"),
+            ("Place", "{{m02.name_change_meeting_place}}"),
+            ("Present", "{{m02.name_change_member_names}}"),
+            ("Chairman", "{{m02.name_change_chairperson_name}}"),
+        ],
+    )
+    clause_para(
+        doc,
+        "{{m02.name_change_chairperson_name}} was elected Chairman for the purpose of the meeting. Having ascertained that a quorum was present, the Chairman called the meeting to order.",
+    )
+    clause_title(doc, "Waiver of Notice")
+    clause_para(doc, "IT WAS RESOLVED -")
+    clause_para(
+        doc,
+        "THAT all member(s) entitled to attend and vote at the meeting being present or represented, the notice of meeting be and is hereby waived and the meeting be deemed duly convened.",
+    )
+    clause_title(doc, "Special Resolution - Change of Company Name")
+    clause_para(doc, "IT WAS RESOLVED -")
+    clause_para(
+        doc,
+        "THAT subject to the approval of the Accounting and Corporate Regulatory Authority and the issue of the notice of incorporation on change of name, the name of the Company be changed from {{m02.old_company_name}} to {{m02.new_company_name}}, and that {{m02.new_company_name}} be substituted for {{m02.old_company_name}} wherever the latter name appears in the Constitution and statutory records of the Company.",
+    )
+    clause_title(doc, "Termination")
+    clause_para(doc, "There being no other business, the Chairman declared the meeting closed.")
+    add_signature_text(doc, "Signed by the Chairman", "{{m02.name_change_chairperson_signature_block}}")
+    return doc
+
+
+def field_map_text() -> str:
+    return """# M02 Shareholder / Member Resolution Package - Field Map
+
+M02 is the shareholder / member resolution category for P2. It currently covers transfer-in and company name change packages.
 
 ## Generated files
 
@@ -383,6 +457,7 @@ M02 is the transfer-in package for changing or transferring the corporate secret
 |---|---|---|---|
 | Notice of EGM and Resolutions | `transfer_in_required = Yes` | Notice issuer, member(s), and all director signers | Contains the Notice of EGM, Consent to Shorter Notice, Members' Resolution / Minutes and Directors' Resolution in one PDF. |
 | Handover and Resignation Package | `transfer_in_required = Yes` | Client signatory; resigning person(s) only if resignation letters are requested and valid | Contains the service handover letter and optional resignation letters in one PDF. |
+| Company Name Change EGM / Special Resolution Package | `change_company_name_required = Yes` or `new_company_name` filled | Director signer(s), member/shareholder signer(s), chairman | Contains the directors' resolution to convene EGM, attendance sheet and EGM minutes / special resolution in one PDF. |
 
 ## Primary input fields
 
@@ -400,6 +475,9 @@ M02 is the transfer-in package for changing or transferring the corporate secret
 | `old_secretary_company` | P2 one-page sheet | Existing corporate secretarial service provider |
 | `new_secretary_company` | P2 one-page sheet | New corporate secretarial service provider |
 | `generate_resignation_letter` | P2 one-page sheet | Optional resignation letters |
+| `change_company_name_required` | P2 one-page sheet | Enables the M02 company name change package when set to Yes; can be left blank if `new_company_name` is filled |
+| `new_company_name` | P2 one-page sheet | Proposed new company name |
+| `company_name_change_effective_date` | P2 one-page sheet | Resolution / meeting date; defaults to document date when blank |
 | Personnel action `action_type` | P2 one-page sheet | Identifies related appointment/resignation items |
 | Personnel action `target_name` | P2 one-page sheet | Officer/person name |
 | Personnel action `effective_date` | P2 one-page sheet | Change or resignation effective date |
@@ -412,12 +490,13 @@ The new service provider is treated as the corporate secretarial service provide
 
 def manifest() -> dict[str, object]:
     return {
-        "version": "P2_M02_v0.2",
-        "package": "M02 Transfer-In Package",
+        "version": "P2_M02_v0.3",
+        "package": "M02 Shareholder / Member Resolution Package",
         "templates": TEMPLATES,
         "default_files": [
             "resolution_package",
             "handover_resignation_package",
+            "company_name_change_package",
         ],
         "optional_sections": ["resignation_letters"],
     }
@@ -433,6 +512,7 @@ def main() -> None:
     ensure_dirs()
     save_template(build_resolution_package(), TEMPLATES["resolution_package"])
     save_template(build_handover_resignation_package(), TEMPLATES["handover_resignation_package"])
+    save_template(build_company_name_change_package(), TEMPLATES["company_name_change_package"])
     (OUTPUT_DIR / "M02_field_map.md").write_text(field_map_text(), encoding="utf-8")
     (OUTPUT_DIR / "M02_manifest.json").write_text(json.dumps(manifest(), ensure_ascii=False, indent=2), encoding="utf-8")
 

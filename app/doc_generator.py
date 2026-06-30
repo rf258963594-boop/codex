@@ -23,15 +23,17 @@ from signatures import SIGNATURE_DOCX_WIDTH_IN, apply_auto_signatures, resolve_s
 
 P1_TEMPLATE_DIR = DOC_TEMPLATE_DIR / "p1_standard_v3_part1"
 P2_TEMPLATE_DIR = DOC_TEMPLATE_DIR / "p2_standard_v1"
+P1_STATUTORY_REGISTERS_TEMPLATE_NAME = "11_statutory_registers_package_standard.docx"
 M01_TEMPLATE_NAME = "M01_combined_directors_resolution_standard.docx"
 M01_VERSION = "P2_M01_v0.1"
-M02_VERSION = "P2_M02_v0.2"
+M02_VERSION = "P2_M02_v0.3"
 M03_VERSION = "P2_M03_v0.1"
 M04_VERSION = "P2_M04_v0.1"
 M05_VERSION = "P2_M05_v0.3"
 M02_TEMPLATE_NAMES = {
     "resolution_package": "M02_resolution_package_transfer_in_standard.docx",
     "handover_resignation_package": "M02_handover_and_resignation_package_standard.docx",
+    "company_name_change_package": "M02_company_name_change_resolution_standard.docx",
 }
 M03_TEMPLATE_NAMES = {
     "resolution": "M03_share_transfer_directors_resolution_standard.docx",
@@ -95,6 +97,14 @@ M01_REPEAT_VARS = {
     "m05.director_signature_rows": "sigrow",
     "m05.attendance_rows": "attendee",
     "m05.checklist_items": "check",
+    "m06.members": "member",
+    "m06.directors": "officer",
+    "m06.secretaries": "officer",
+    "m06.controllers": "controller",
+    "m06.nominee_directors": "nominee",
+    "m06.nominee_shareholders": "nominee",
+    "m06.share_certificates": "certificate",
+    "m06.review_notes": "note",
 }
 
 
@@ -121,6 +131,7 @@ def generate_p1_package(parsed: dict[str, Any], job_code: str) -> Path:
         ("07_return_of_allotment_form24_standard.docx", "07_return_of_allotment_form24.docx"),
         ("09_register_of_members_standard.docx", "09_register_of_members.docx"),
         ("10_paid_up_capital_confirmation_standard.docx", "10_paid_up_capital_confirmation.docx"),
+        (P1_STATUTORY_REGISTERS_TEMPLATE_NAME, "11_statutory_registers_package.docx"),
     ]
     for template_name, output_name in company_templates:
         render_docx(P1_TEMPLATE_DIR / template_name, package_dir / output_name, context)
@@ -320,14 +331,25 @@ def generate_p2_m02_package(parsed: dict[str, Any], job_code: str) -> Path:
 
     context = build_m02_context(parsed)
     if not m02_has_content(context["m02"]):
-        raise ValueError("This task has no M02 transfer-in content.")
+        raise ValueError("This task has no M02 shareholder / member resolution content.")
 
     company_name = safe_filename(context["company"].get("company_name") or "company")
     generated: list[str] = []
-    base_outputs = [
-        ("resolution_package", f"01_M02_EGM_and_board_resolutions_{company_name}.docx"),
-        ("handover_resignation_package", f"02_M02_handover_and_resignation_package_{company_name}.docx"),
-    ]
+    base_outputs: list[tuple[str, str]] = []
+    if context["m02"].get("include_transfer_in"):
+        base_outputs.extend(
+            [
+                ("resolution_package", f"{len(base_outputs) + 1:02d}_M02_EGM_and_board_resolutions_{company_name}.docx"),
+                ("handover_resignation_package", f"{len(base_outputs) + 2:02d}_M02_handover_and_resignation_package_{company_name}.docx"),
+            ]
+        )
+    if context["m02"].get("include_company_name_change"):
+        base_outputs.append(
+            (
+                "company_name_change_package",
+                f"{len(base_outputs) + 1:02d}_M02_company_name_change_resolution_package_{company_name}.docx",
+            )
+        )
     for template_key, output_name in base_outputs:
         render_m01_docx(P2_TEMPLATE_DIR / M02_TEMPLATE_NAMES[template_key], package_dir / output_name, context)
         if template_key == "handover_resignation_package":
@@ -345,13 +367,19 @@ def generate_p2_m02_package(parsed: dict[str, Any], job_code: str) -> Path:
                 "transfer_in_mode": context["m02"].get("mode_label", ""),
                 "existing_service_provider": context["m02"].get("old_secretary_company", ""),
                 "new_service_provider": context["m02"].get("new_secretary_company", ""),
+                "company_name_change": {
+                    "old_company_name": context["m02"].get("old_company_name", ""),
+                    "new_company_name": context["m02"].get("new_company_name", ""),
+                    "resolution_date": context["m02"].get("name_change_resolution_date", ""),
+                },
                 "member_signers": [row.get("full_name", "") for row in context["m02"].get("member_signers", [])],
                 "director_signers": [row.get("full_name", "") for row in context["m02"].get("director_signers", [])],
                 "related_personnel_changes": context["m02"].get("personnel_change_lines", []),
                 "resignation_letter_sections": [row.get("full_name", "") for row in context["m02"].get("resigning_persons", [])],
                 "notes": [
-                    "M02 is the P2 transfer-in package.",
-                    "The output is grouped into two signing PDFs: a resolution package and a handover/resignation package.",
+                    "M02 is the P2 shareholder / member resolution category. It currently supports transfer-in and company name change packages.",
+                    "Transfer-in output is grouped into two signing PDFs: a resolution package and a handover/resignation package.",
+                    "Company name change output is generated as a separate EGM / special resolution package under M02.",
                     "The new service provider is described as corporate secretarial service provider, not as the individual statutory company secretary.",
                     "Optional resignation letter sections are appended only when resigning persons are identified from personnel action rows and resignation letters are requested.",
                 ],
@@ -1032,10 +1060,11 @@ def build_m02_context(parsed: dict[str, Any]) -> dict[str, Any]:
     all_events = parsed.get("change_events", [])
     events = [row for row in all_events if active_m02_event(row)]
     transfer = next((row for row in events if clean(row.get("event_type")) in M02_TRANSFER_EVENT_TYPES), {})
+    name_change = next((row for row in events if clean(row.get("event_type")) == "change_company_name"), {})
     registered_office_change = registered_office_change_for_m02(all_events)
     provider = provider_context()
 
-    effective_date_raw = clean(transfer.get("effective_date") or company.get("default_document_date"))
+    effective_date_raw = clean(transfer.get("effective_date") or name_change.get("effective_date") or company.get("default_document_date") or today_text())
     old_provider = clean(
         transfer.get("old_secretary_company")
         or transfer.get("old_value")
@@ -1068,11 +1097,21 @@ def build_m02_context(parsed: dict[str, Any]) -> dict[str, Any]:
     notice_issuer = notice_issuer_for_m02(people, company, director_signers, client_signatory)
     personnel_changes = personnel_changes_for_m02(events, people)
     resignation_people = resignation_persons_for_m02(events, people, transfer, company)
+    name_change_context = company_name_change_context_for_m02(
+        name_change,
+        company,
+        people,
+        provider,
+        member_signers,
+        director_signers,
+        effective_date_raw,
+    )
 
     m02: dict[str, Any] = {
         "include_transfer_in": bool(transfer),
+        "include_company_name_change": bool(name_change_context.get("include_company_name_change")),
         "mode": mode,
-        "mode_label": "Transfer-in",
+        "mode_label": "Transfer-in" if transfer else "Company name change" if name_change else "",
         "manual_review_required": "No",
         "effective_date_raw": effective_date_raw,
         "effective_date": date_text(effective_date_raw),
@@ -1095,6 +1134,7 @@ def build_m02_context(parsed: dict[str, Any]) -> dict[str, Any]:
         "notice_issuer_signature_block": signature_block(notice_issuer, "Director / Authorised Signatory", effective_date_raw),
         "handover_request_items": handover_request_items(),
     }
+    m02.update(name_change_context)
     return {
         "company": company,
         "people": people,
@@ -1270,6 +1310,8 @@ def active_m02_event(row: dict[str, Any]) -> bool:
             "generate",
             ["effective_date", "old_value", "new_value", "old_secretary_company", "new_secretary_company"],
         )
+    if event_type == "change_company_name":
+        return active_m01_row(row, "generate", ["effective_date", "new_company_name", "new_value"])
     if event_type in {"appoint_director", "appoint_secretary", "resign_director", "resign_secretary"}:
         return active_m01_row(row, "generate", ["target_person_id", "target_name", "effective_date", "resignation_letter"])
     return False
@@ -1285,7 +1327,57 @@ def registered_office_change_for_m02(events: list[dict[str, Any]]) -> dict[str, 
 
 
 def m02_has_content(m02: dict[str, Any]) -> bool:
-    return bool(m02.get("include_transfer_in"))
+    return bool(m02.get("include_transfer_in") or m02.get("include_company_name_change"))
+
+
+def company_name_change_context_for_m02(
+    name_change: dict[str, Any],
+    company: dict[str, Any],
+    people: list[dict[str, Any]],
+    provider: dict[str, Any],
+    member_signers: list[dict[str, Any]],
+    director_signers: list[dict[str, Any]],
+    fallback_date: Any,
+) -> dict[str, Any]:
+    new_name = clean(name_change.get("new_company_name") or name_change.get("new_value") or company.get("new_company_name"))
+    if not name_change or not new_name:
+        return {"include_company_name_change": False}
+
+    date_raw = clean(name_change.get("effective_date") or name_change.get("resolution_date") or company.get("company_name_change_effective_date") or fallback_date or today_text())
+    old_name = clean(name_change.get("old_company_name") or name_change.get("old_value") or company.get("company_name"))
+    meeting_time = clean(name_change.get("meeting_time") or company.get("egm_meeting_time") or "10.00 a.m.")
+    meeting_place = clean(
+        name_change.get("meeting_place")
+        or company.get("egm_meeting_place")
+        or company.get("meeting_place")
+        or company.get("registered_office_address")
+        or provider.get("registered_address")
+    )
+    chair_tokens = split_signer_tokens(
+        name_change.get("chairperson_name")
+        or company.get("egm_chairperson_name")
+        or company.get("chairperson_name")
+    )
+    chair_candidates = signers_from_tokens(chair_tokens, people, "Chairman") if chair_tokens else []
+    chairperson = chair_candidates[0] if chair_candidates else (member_signers[0] if member_signers else director_signers[0] if director_signers else {})
+    chairperson = {**chairperson, "capacity": "Chairman"}
+    return {
+        "include_company_name_change": True,
+        "old_company_name": old_name,
+        "new_company_name": new_name,
+        "new_company_name_upper": new_name.upper(),
+        "old_company_name_upper": old_name.upper(),
+        "name_change_resolution_date_raw": date_raw,
+        "name_change_resolution_date": date_text(date_raw),
+        "name_change_resolution_date_upper": formal_date_upper(date_raw),
+        "name_change_meeting_time": meeting_time,
+        "name_change_meeting_place": meeting_place,
+        "name_change_chairperson_name": clean(chairperson.get("full_name")),
+        "name_change_chairperson_signature_block": signature_block(chairperson, "Chairman", date_raw),
+        "name_change_director_signature_blocks": signature_blocks(director_signers, "Director", date_raw),
+        "name_change_member_signature_blocks": signature_blocks(member_signers, "Member / Authorised Signatory", date_raw),
+        "name_change_member_names": names_text(member_signers),
+    }
 
 
 def member_signers_for_m02(people: list[dict[str, Any]], company: dict[str, Any]) -> list[dict[str, Any]]:
@@ -2761,7 +2853,18 @@ def build_context(parsed: dict[str, Any]) -> dict[str, Any]:
     certificate_director = default_certificate_director(directors)
     paid_up_confirmation_signatory = default_paid_up_confirmation_signatory(directors, client_signatory)
 
+    controllers = registrable_controllers(shareholders, total_shares)
     sig = signature_context(company.get("incorporation_date_raw"))
+    m06 = statutory_registers_context(
+        company,
+        people,
+        shareholders,
+        directors,
+        secretaries,
+        nominee_directors,
+        controllers,
+        client_signatory,
+    )
     return {
         "company": company,
         "people": people,
@@ -2772,10 +2875,11 @@ def build_context(parsed: dict[str, Any]) -> dict[str, Any]:
         "local_directors": local_directors,
         "client_signatories": client_signatories,
         "certificate_director": certificate_director,
-        "registrable_controllers": registrable_controllers(shareholders, total_shares),
+        "registrable_controllers": controllers,
         "provider": provider_context(),
         "signature": sig,
         "register": p1_register_context(company, shareholders),
+        "m06": m06,
         "director": directors[0] if directors else {},
         "secretary": secretaries[0] if secretaries else {},
         "shareholder": shareholders[0] if shareholders else {},
@@ -2786,6 +2890,287 @@ def build_context(parsed: dict[str, Any]) -> dict[str, Any]:
         "client_signatory_3": {},
         "secretary_or_director": (secretaries or directors or [{}])[0],
     }
+
+
+def statutory_registers_context(
+    company: dict[str, Any],
+    people: list[dict[str, Any]],
+    shareholders: list[dict[str, Any]],
+    directors: list[dict[str, Any]],
+    secretaries: list[dict[str, Any]],
+    nominee_directors: list[dict[str, Any]],
+    controllers: list[dict[str, Any]],
+    client_signatory: dict[str, Any],
+) -> dict[str, Any]:
+    effective_date = company.get("incorporation_date_raw") or company.get("incorporation_date")
+    default_nominator = default_register_nominator(company, people, shareholders, directors, client_signatory)
+    nominee_director_rows = [
+        nominee_director_register_entry(person, company, default_nominator) for person in nominee_directors
+    ]
+    nominee_shareholder_rows = nominee_shareholder_register_entries(shareholders, company, default_nominator)
+    review_notes = statutory_register_review_notes(
+        company,
+        controllers,
+        nominee_director_rows,
+        nominee_shareholder_rows,
+        default_nominator,
+    )
+    return {
+        "title": "STATUTORY REGISTERS PACKAGE",
+        "subtitle": "Initial statutory registers prepared from the incorporation data",
+        "prepared_date": date_text(effective_date),
+        "effective_date": date_text(effective_date),
+        "location": clean(company.get("register_location") or company.get("registered_office_address")),
+        "members": p1_register_entries(shareholders),
+        "directors": [officer_register_entry(person, company, "Director") for person in directors],
+        "secretaries": [officer_register_entry(person, company, "Secretary") for person in secretaries],
+        "controllers": [controller_register_entry(row, company, shareholders) for row in controllers],
+        "nominee_directors": nominee_director_rows,
+        "nominee_shareholders": nominee_shareholder_rows,
+        "share_certificates": share_certificate_register_entries(shareholders, company),
+        "review_notes": review_notes,
+        "default_nominator_name": default_nominator.get("name", ""),
+        "default_nominator_source": default_nominator.get("source", ""),
+    }
+
+
+def officer_register_entry(person: dict[str, Any], company: dict[str, Any], capacity: str) -> dict[str, Any]:
+    appointment_date = person.get("appointment_date") or company.get("incorporation_date_long") or company.get("incorporation_date")
+    status_notes = []
+    if capacity == "Director":
+        if is_yes(person.get("is_local_resident_director")):
+            status_notes.append("Local resident director")
+        if is_yes(person.get("is_nominee_director")):
+            status_notes.append("Nominee director")
+    return {
+        "name": clean(person.get("full_name")),
+        "capacity": capacity,
+        "id_type": clean(person.get("id_type")),
+        "id_number": clean(person.get("id_number")),
+        "nationality": clean(person.get("nationality")),
+        "date_of_birth": short_date_text(person.get("date_of_birth")),
+        "address": clean(person.get("residential_address")),
+        "appointment_date": date_text(appointment_date),
+        "cessation_date": date_text(person.get("cessation_date")),
+        "status": "Current" if not clean(person.get("cessation_date")) else "Ceased",
+        "remarks": clean(person.get("remarks") or "; ".join(status_notes)),
+    }
+
+
+def controller_register_entry(
+    shareholder: dict[str, Any],
+    company: dict[str, Any],
+    shareholders: list[dict[str, Any]],
+) -> dict[str, Any]:
+    total_shares = sum_number(row.get("shares") for row in shareholders) or to_number(company.get("total_issued_shares"))
+    shares = to_number(shareholder.get("shares"))
+    percent_text = ""
+    if total_shares > 0 and shares > 0:
+        percent_text = f"{shares / total_shares * 100:.2f}".rstrip("0").rstrip(".")
+    default_basis = "Shareholding of 25% or more of the issued shares"
+    if percent_text:
+        default_basis = f"{default_basis} ({percent_text}%)"
+    if is_yes(shareholder.get("is_corporate")):
+        controller_type = "Corporate"
+    else:
+        controller_type = "Individual"
+    return {
+        "name": clean(shareholder.get("shareholder_name")),
+        "controller_type": controller_type,
+        "id_number": clean(shareholder.get("id_number")),
+        "address": clean(shareholder.get("shareholder_address")),
+        "nationality": clean(shareholder.get("nationality")),
+        "basis": clean(shareholder.get("controller_basis") or default_basis),
+        "entry_date": date_text(
+            shareholder.get("controller_start_date")
+            or shareholder.get("allotment_date")
+            or company.get("incorporation_date_raw")
+        ),
+        "status": "Current",
+        "remarks": clean(shareholder.get("controller_remarks") or shareholder.get("remarks")),
+    }
+
+
+def default_register_nominator(
+    company: dict[str, Any],
+    people: list[dict[str, Any]],
+    shareholders: list[dict[str, Any]],
+    directors: list[dict[str, Any]],
+    client_signatory: dict[str, Any],
+) -> dict[str, str]:
+    explicit_name = clean(company.get("nominee_director_nominator_name") or company.get("nominator_name"))
+    if explicit_name:
+        return {
+            "name": explicit_name,
+            "id_number": clean(company.get("nominee_director_nominator_id_number") or company.get("nominator_id_number")),
+            "address": clean(company.get("nominee_director_nominator_address") or company.get("nominator_address")),
+            "source": "Manual override from company sheet",
+        }
+    for person in directors:
+        if not is_yes(person.get("is_nominee_director")):
+            return nominator_from_person(person, "Default first client director")
+    for shareholder in shareholders:
+        if not is_yes(shareholder.get("is_corporate")):
+            return nominator_from_shareholder(shareholder, people, "Default first individual shareholder")
+    for shareholder in shareholders:
+        if is_yes(shareholder.get("is_corporate")) and clean(shareholder.get("authorized_rep_full_name")):
+            return {
+                "name": clean(shareholder.get("authorized_rep_full_name")),
+                "id_number": "",
+                "address": clean(shareholder.get("shareholder_address")),
+                "source": "Default authorised representative of corporate shareholder",
+            }
+    if client_signatory:
+        return nominator_from_person(client_signatory, "Default client signatory")
+    return {"name": "", "id_number": "", "address": "", "source": "Manual review required"}
+
+
+def nominator_from_person(person: dict[str, Any], source: str) -> dict[str, str]:
+    return {
+        "name": clean(person.get("full_name")),
+        "id_number": clean(person.get("id_number")),
+        "address": clean(person.get("residential_address")),
+        "source": source,
+    }
+
+
+def nominator_from_shareholder(shareholder: dict[str, Any], people: list[dict[str, Any]], source: str) -> dict[str, str]:
+    matched = match_person(shareholder, people)
+    return {
+        "name": clean(shareholder.get("shareholder_name")),
+        "id_number": clean(shareholder.get("id_number")),
+        "address": clean(matched.get("residential_address") or shareholder.get("shareholder_address")),
+        "source": source,
+    }
+
+
+def nominee_director_register_entry(
+    person: dict[str, Any],
+    company: dict[str, Any],
+    default_nominator: dict[str, str],
+) -> dict[str, Any]:
+    nominator = {
+        "name": clean(person.get("nominator_name") or person.get("nominee_director_nominator_name")) or default_nominator.get("name", ""),
+        "id_number": clean(person.get("nominator_id_number") or person.get("nominee_director_nominator_id_number")) or default_nominator.get("id_number", ""),
+        "address": clean(person.get("nominator_address") or person.get("nominee_director_nominator_address")) or default_nominator.get("address", ""),
+        "source": "Manual override from person sheet"
+        if clean(person.get("nominator_name") or person.get("nominee_director_nominator_name"))
+        else default_nominator.get("source", ""),
+    }
+    appointment_date = person.get("appointment_date") or company.get("incorporation_date_long") or company.get("incorporation_date")
+    return {
+        "name": clean(person.get("full_name")),
+        "id_number": clean(person.get("id_number")),
+        "address": clean(person.get("residential_address")),
+        "appointment_date": date_text(appointment_date),
+        "cessation_date": date_text(person.get("cessation_date")),
+        "nominator_name": nominator.get("name", ""),
+        "nominator_id_number": nominator.get("id_number", ""),
+        "nominator_address": nominator.get("address", ""),
+        "basis": nominator.get("source", ""),
+        "remarks": clean(person.get("remarks")),
+    }
+
+
+def nominee_shareholder_register_entries(
+    shareholders: list[dict[str, Any]],
+    company: dict[str, Any],
+    default_nominator: dict[str, str],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for shareholder in shareholders:
+        has_nominee_marker = (
+            is_yes(shareholder.get("is_nominee_shareholder"))
+            or clean(shareholder.get("nominee_shareholder_nominator_name"))
+            or clean(shareholder.get("beneficial_owner_name"))
+        )
+        if not has_nominee_marker:
+            continue
+        nominator_name = clean(
+            shareholder.get("nominee_shareholder_nominator_name")
+            or shareholder.get("beneficial_owner_name")
+            or default_nominator.get("name")
+        )
+        rows.append(
+            {
+                "nominee_name": clean(shareholder.get("shareholder_name")),
+                "nominee_id_number": clean(shareholder.get("id_number")),
+                "nominator_name": nominator_name,
+                "nominator_id_number": clean(shareholder.get("nominee_shareholder_nominator_id_number")) or default_nominator.get("id_number", ""),
+                "nominator_address": clean(shareholder.get("nominee_shareholder_nominator_address")) or default_nominator.get("address", ""),
+                "shares": clean(shareholder.get("shares")),
+                "share_class": clean(shareholder.get("share_class")) or company.get("share_class") or "Ordinary",
+                "entry_date": date_text(shareholder.get("allotment_date") or company.get("incorporation_date_raw")),
+                "remarks": clean(shareholder.get("nominee_shareholder_remarks") or shareholder.get("remarks")),
+            }
+        )
+    return rows
+
+
+def share_certificate_register_entries(shareholders: list[dict[str, Any]], company: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    currency = clean(company.get("share_currency") or company.get("currency")) or "SGD"
+    for shareholder in shareholders:
+        rows.append(
+            {
+                "certificate_no": clean(shareholder.get("certificate_no")),
+                "holder_name": clean(shareholder.get("shareholder_name")),
+                "shares": clean(shareholder.get("shares")),
+                "share_class": clean(shareholder.get("share_class")) or company.get("share_class") or "Ordinary",
+                "paid_amount": f"{currency} {format_money_number(shareholder.get('paid_amount'))}",
+                "issue_date": date_text(shareholder.get("issue_date") or company.get("incorporation_date_raw")),
+                "status": "Issued",
+                "remarks": clean(shareholder.get("remarks")),
+            }
+        )
+    return rows
+
+
+def statutory_register_review_notes(
+    company: dict[str, Any],
+    controllers: list[dict[str, Any]],
+    nominee_directors: list[dict[str, Any]],
+    nominee_shareholders: list[dict[str, Any]],
+    default_nominator: dict[str, str],
+) -> list[dict[str, str]]:
+    notes: list[dict[str, str]] = []
+    notes.append(
+        {
+            "item": "Register source",
+            "note": "Prepared from incorporation worksheet data. Check against signed Form 24, share certificates, RORC notices and final ACRA / BizFile records.",
+        }
+    )
+    if controllers:
+        notes.append(
+            {
+                "item": "RORC",
+                "note": "Controllers are auto-selected from shareholders at 25% or more unless overridden in the shareholder sheet.",
+            }
+        )
+    else:
+        notes.append({"item": "RORC", "note": "No controller identified from current shareholder data. Manual review required."})
+    if nominee_directors:
+        notes.append(
+            {
+                "item": "Nominee director nominator",
+                "note": f"Default nominator: {default_nominator.get('name') or 'manual review required'} ({default_nominator.get('source')}).",
+            }
+        )
+    if not nominee_shareholders:
+        notes.append(
+            {
+                "item": "Nominee shareholders",
+                "note": "No nominee shareholder marker found. This section is omitted unless is_nominee_shareholder or nominee shareholder nominator fields are completed.",
+            }
+        )
+    if not clean(company.get("register_location")):
+        notes.append(
+            {
+                "item": "Register location",
+                "note": "Register location is blank in the worksheet; registered office is used by default.",
+            }
+        )
+    return notes
 
 
 def p1_register_context(company: dict[str, Any], shareholders: list[dict[str, Any]]) -> dict[str, Any]:
@@ -3522,14 +3907,20 @@ def signature_context(value: Any = "") -> dict[str, str]:
 def registrable_controllers(shareholders: list[dict[str, Any]], total_shares: float) -> list[dict[str, Any]]:
     if not shareholders:
         return []
+    explicit = [row for row in shareholders if is_yes(row.get("is_registrable_controller"))]
+    if explicit:
+        return explicit
+    candidates = [row for row in shareholders if not is_no(row.get("is_registrable_controller"))]
+    if not candidates:
+        return []
     if total_shares <= 0:
-        return shareholders
+        return candidates
     controllers = []
-    for row in shareholders:
+    for row in candidates:
         shares = to_number(row.get("shares"))
         if shares / total_shares >= 0.25:
             controllers.append(row)
-    return controllers or shareholders
+    return controllers or candidates
 
 
 def match_person(shareholder: dict[str, Any], people: list[dict[str, Any]]) -> dict[str, Any]:
@@ -3626,6 +4017,10 @@ def int_to_words(number: int) -> str:
 
 def is_yes(value: Any) -> bool:
     return str(value or "").strip().lower() in {"yes", "y", "true", "1", "是", "需要"}
+
+
+def is_no(value: Any) -> bool:
+    return str(value or "").strip().lower() in NO_VALUES
 
 
 def clean(value: Any) -> str:

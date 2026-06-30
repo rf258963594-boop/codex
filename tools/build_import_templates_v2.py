@@ -80,6 +80,8 @@ def add_common_validations(wb: Workbook) -> None:
             "is_secretary",
             "is_shareholder",
             "is_authorized_rep",
+            "is_registrable_controller",
+            "is_nominee_shareholder",
         ]:
             add_validation(ws, col, YES_NO)
         add_validation(ws, "task_type", TASK_TYPES)
@@ -128,6 +130,9 @@ def build_registration(blank: bool) -> Workbook:
         ["share_class_default", "默认股份类别", "Default share class", "", "No", "留空默认 Ordinary"],
         ["share_par_value", "每股登记价值覆盖", "Par/registered value per share override", "", "No", "留空通常按 paid_up_capital / shares 或 1 处理。"],
         ["register_location", "股东名册保存地址", "Register location", "", "No", "留空默认注册地址。"],
+        ["nominee_director_nominator_name", "挂名董事提名人姓名覆盖", "Nominee director nominator name override", "", "No", "通常留空；系统默认第一个客户董事。"],
+        ["nominee_director_nominator_id_number", "挂名董事提名人证件号覆盖", "Nominee director nominator ID override", "", "No", "通常留空；与上方姓名一起用于 M06 register。"],
+        ["nominee_director_nominator_address", "挂名董事提名人地址覆盖", "Nominee director nominator address override", "", "No", "通常留空；与上方姓名一起用于 M06 register。"],
         ["remarks", "备注", "Remarks", "", "No", "内部备注，不进入正式文件。"],
     ]
     people_rows = [
@@ -169,6 +174,13 @@ def build_registration(blank: bool) -> Workbook:
             "currency",
             "certificate_no",
             "signing_required",
+            "is_registrable_controller",
+            "controller_basis",
+            "controller_start_date",
+            "is_nominee_shareholder",
+            "nominee_shareholder_nominator_name",
+            "nominee_shareholder_nominator_id_number",
+            "nominee_shareholder_nominator_address",
             "remarks",
         ]
     ]
@@ -200,7 +212,7 @@ def build_registration(blank: bool) -> Workbook:
                 ["new", "", "CLIENT SHAREHOLDER 1", "Passport", "P1000001A", "Chinese", "03/03/1988", "BEIJING, CHINA", "client1@example.com", "+86 13800000001", "Yes", "No", "No", "No", "Yes", "No", "Yes", "27/05/2026", "客户董事/股东"],
             ]
         )
-        shareholder_rows.append(["person", "CLIENT SHAREHOLDER 1", "P1000001A", "", "", "", "", "", "Ordinary", 1000, 1000, "SGD", "", "Yes", "自然人股东示例；正式模板请删除示例行"])
+        shareholder_rows.append(["person", "CLIENT SHAREHOLDER 1", "P1000001A", "", "", "", "", "", "Ordinary", 1000, 1000, "SGD", "", "Yes", "", "", "", "", "", "", "", "自然人股东示例；正式模板请删除示例行"])
     write_sheet(wb, "Company", company_rows)
     write_sheet(wb, "People", people_rows)
     write_sheet(wb, "Shareholders", shareholder_rows)
