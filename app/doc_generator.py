@@ -2859,11 +2859,18 @@ def m05_annual_required(annual: dict[str, Any]) -> bool:
 
 
 def m05_director_signers(annual: dict[str, Any], people: list[dict[str, Any]], company: dict[str, Any]) -> list[dict[str, Any]]:
-    tokens = split_signer_tokens(annual.get("director_signer_name") or company.get("director_signer_names") or company.get("director_signer_name"))
+    tokens = split_signer_tokens(annual.get("director_signer_name") or annual.get("director_signer_names"))
     signers = signers_from_tokens(tokens, people, "Director")
     if signers:
         return signers
-    return director_signers_for_m01(people, company)
+    return m05_all_current_directors(people)
+
+
+def m05_all_current_directors(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Annual review director documents should default to all current directors."""
+    return dedupe_signers(
+        [{**person, "capacity": "Director"} for person in people if is_yes(person.get("is_director"))]
+    )
 
 
 def m05_member_signers(

@@ -100,9 +100,9 @@ ANNUAL_FIELDS = [
     ("AGM 状态", "AGM status", "agm_status", "", "可空", "通常不用填；如不召开 AGM，可填 Dispensed with AGM / Exempt from AGM / Written resolutions。"),
     ("IRAS 税务状态", "IRAS tax status", "iras_tax_status", "", "可空", "只作复核提醒；通常不用填。"),
     ("财报日期", "Financial statement date", "financial_statement_date", "", "默认 FYE", "留空默认财年结束日。"),
-    ("董事签字人", "Director signer", "director_signer_name", "", "常用", "留空默认首页董事签字人。"),
+    ("董事签字人", "Director signer", "director_signer_name", "", "可空", "留空=所有当前董事，包含挂名董事；只在需要人工覆盖时填写。"),
     ("股东/成员签字人", "Shareholder signer", "shareholder_signer_name", "", "可空", "需要股东签署的年审文件使用。"),
-    ("AR 授权签字人", "AR authorised signer", "ar_authorized_signer_name", "", "默认董事签字人", "Annual Return 授权。"),
+    ("AR 授权签字人", "AR authorised signer", "ar_authorized_signer_name", "", "可空", "留空=第一个年审董事；只在需要指定 AR 授权人时填写。"),
     ("董事费", "Directors' fee", "directors_fee", "0", "默认", "通常 0。"),
     ("董事薪酬", "Directors' remuneration", "directors_remuneration", "0", "默认", "通常 0。"),
     ("Shorter Notice Consent", "Shorter notice consent", "shorter_notice_consent", "Auto", "默认", "Auto / Yes / No。"),
@@ -471,8 +471,8 @@ def build_annual_sheet(wb: Workbook, sample: bool) -> None:
         "accounts_status": "active",
         "agm_route": "ordinary_agm",
         "agm_status": "Held AGM",
-        "director_signer_name": "ZHANG YI",
-        "ar_authorized_signer_name": "ZHANG YI",
+        "director_signer_name": "",
+        "ar_authorized_signer_name": "",
     } if sample else {}
     row = 4
     for cn, en, key, default, required, note in ANNUAL_FIELDS:

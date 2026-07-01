@@ -866,6 +866,8 @@ class App(BaseHTTPRequestHandler):
                 <option value="dormant">休眠</option>
                 <option value="audited">已审计</option>
               </select></label>
+              <label>年审董事签字人<input name="annual_director_signer_names" list="common-people" placeholder="留空=所有当前董事；多个用逗号隔开"></label>
+              <label>AR 授权签字人<input name="annual_ar_authorized_signer_name" list="common-people" placeholder="留空=第一个年审董事"></label>
               <label>董事费<input name="directors_fee" value="0"></label>
               <label>董事薪酬<input name="directors_remuneration" value="0"></label>
             </div>
@@ -2322,6 +2324,10 @@ def build_p2_form_parsed(fields: dict[str, list[str]], common_people: dict[str, 
 
     for idx, name in enumerate(split_form_names(company["director_signer_names"])):
         add_person(name, is_director="Yes", is_client_signatory="Yes" if idx == 0 else "No")
+    for name in split_form_names(form_value(fields, "annual_director_signer_names")):
+        add_person(name, is_director="Yes")
+    if form_value(fields, "annual_ar_authorized_signer_name"):
+        add_person(form_value(fields, "annual_ar_authorized_signer_name"), is_director="Yes")
     for name in split_form_names(company["member_signer_names"]):
         add_person(name, is_shareholder="Yes", is_client_signatory="Yes")
 
@@ -2480,9 +2486,9 @@ def build_p2_form_parsed(fields: dict[str, list[str]], common_people: dict[str, 
         "agm_place": new_address or current_address,
         "agm_route": form_value(fields, "agm_route") or "ordinary_agm",
         "accounts_status": form_value(fields, "accounts_status") or "active",
-        "director_signer_name": company["director_signer_names"],
+        "director_signer_name": form_value(fields, "annual_director_signer_names"),
         "shareholder_signer_name": company["member_signer_names"],
-        "ar_authorized_signer_name": company["director_signer_names"],
+        "ar_authorized_signer_name": form_value(fields, "annual_ar_authorized_signer_name"),
         "directors_fee": form_value(fields, "directors_fee", "0") or "0",
         "directors_remuneration": form_value(fields, "directors_remuneration", "0") or "0",
         "management_rep_letter": "Yes",
