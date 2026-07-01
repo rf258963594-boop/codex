@@ -194,6 +194,7 @@ def seed_defaults(conn: sqlite3.Connection):
         ("chg_share_transfer", "change", "share_transfer", "Share Transfer Instrument + Share Update Checklist", "transfer_parties", "transferor/transferee", 1, 0, ""),
         ("chg_personal", "change", "personal_particulars", "Personal Particulars Filing Checklist", "none", "none", 0, 0, ""),
         ("bizfile_checklist", "change", "any_change", "BizFile Filing Checklist", "none", "none", 0, 0, "所有变更任务默认建议"),
+        ("mnt_strike_off", "maintenance", "strike_off", "M06 Strike-off Package", "mixed", "directors/shareholders", 0, 1, "注销前必须人工复核 IRAS、CPF、债务、银行、charge register 和诉讼等事项"),
     ]
     for row in rules:
         conn.execute(

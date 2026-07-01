@@ -332,7 +332,7 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
 
     blocking_errors: list[str] = []
     warnings: list[str] = []
-    info: list[str] = ["公司维护/变更/年审表已支持普通董事决议、M02 股东决议/转入文件、股份转让、增资配股和年审文件包生成。"]
+    info: list[str] = ["公司维护/变更/年审表已支持普通董事决议、M02 股东决议/转入文件、股份转让、增资配股、年审和注销文件包生成。"]
     files: list[dict[str, Any]] = []
     preview: list[dict[str, Any]] = []
     detected: list[str] = []
@@ -347,6 +347,7 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
     resignation_letters: list[str] = []
     transfer_in_items: list[str] = []
     company_name_change_items: list[str] = []
+    strike_off_items: list[str] = []
     high_risk_items: list[str] = []
 
     for row in events:
@@ -362,6 +363,8 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
             transfer_in_items.append(label)
         if event_type == "change_company_name":
             company_name_change_items.append(label)
+        if event_type == "strike_off":
+            strike_off_items.append(label)
         if event_type in {"resign_director", "resign_secretary"} and is_yes(row.get("resignation_letter")):
             resignation_letters.append(label)
         if is_yes(row.get("manual_review_required")) or event_type in {"remove_director", "change_company_name", "strike_off"}:
@@ -388,9 +391,9 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
         role_has(person, "is_shareholder") or role_has(person, "is_client_signatory")
         for person in people
     )
-    if (dr_groups or transfers or allotments or annual_required) and not director_signer_hint and not has_director_candidate:
+    if (dr_groups or transfers or allotments or annual_required or strike_off_items) and not director_signer_hint and not has_director_candidate:
         warnings.append("缺少董事签字人。系统可以生成文件，但董事签字栏可能为空，请在表格填写 director_signer_names 或在人员资料中标记董事。")
-    if (transfer_in_items or company_name_change_items or allotments or annual_required) and not member_signer_hint and not has_client_candidate:
+    if (transfer_in_items or company_name_change_items or allotments or annual_required or strike_off_items) and not member_signer_hint and not has_client_candidate:
         warnings.append("缺少股东/客户授权签字人。系统可以生成文件，但股东或客户授权签字栏可能为空，请填写 member_signer_names 或 client_signatory_name。")
 
     if dr_groups:
@@ -494,6 +497,11 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
         )
         preview.append(preview_item("年审包", 1, "合并签署 PDF + 独立内部复核清单", f"FYE: {fye or '-'}；AGM: {text(annual.get('agm_date')) or '-'}；状态: {text(annual.get('accounts_status')) or 'default'} / {text(annual.get('agm_status')) or text(annual.get('agm_route')) or 'ordinary_agm'}"))
 
+    if strike_off_items:
+        files.append(file_item("M06 Strike-off Package", "注销/Strike-off：" + "、".join(strike_off_items), "董事签署；股东/成员签同意书", "Yes", manual_review=True, package="注销包", doc_type="M06 Strike-off"))
+        preview.append(preview_item("注销文件包", 1, "M06 董事决议 / 股东同意书 / 董事声明", "、".join(strike_off_items)))
+        warnings.append("注销文件包只生成签署文件，不代表已完成 IRAS、CPF、债务、银行、charge register、诉讼等注销前复核。")
+
     if high_risk_items:
         warnings.append("以下事项建议人工复核后再生成正式文件：" + "、".join(dedupe(high_risk_items)))
     if not (events or transfers or allotments or annual_required):
@@ -515,8 +523,10 @@ def suggest_maintenance(parsed: dict[str, Any]) -> dict[str, Any]:
             "m03_available": "Yes" if transfers else "No",
             "m04_available": "Yes" if allotments else "No",
             "m05_available": "Yes" if annual_required else "No",
+            "m06_available": "Yes" if strike_off_items else "No",
             "transfer_in": "Yes" if transfer_in_items else "No",
             "company_name_change": "Yes" if company_name_change_items else "No",
+            "strike_off": "Yes" if strike_off_items else "No",
             "share_transfers": len(transfers),
             "share_allotments": len(allotments),
             "annual_review": "Yes" if annual_required else "No",
@@ -553,6 +563,8 @@ def active_change_event(row: dict[str, Any]) -> bool:
             "new_office_hours",
             "field_label",
             "new_company_name",
+            "strike_off_cessation_date",
+            "strike_off_declaration_signer_name",
         ],
     )
 

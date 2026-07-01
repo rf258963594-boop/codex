@@ -73,6 +73,9 @@ KV_FIELDS = [
     ("旧秘书公司", "Old secretary firm", "old_secretary_company", "", "可空", ""),
     ("新秘书公司", "New secretary firm", "new_secretary_company", "RSIN GROUP PTE. LTD.", "可空", ""),
     ("是否出辞职信", "Generate resignation letter", "generate_resignation_letter", "No", "可空", "只有需要旧人员单独签辞职信时填 Yes；一般留 No。"),
+    ("是否注销公司", "Strike-off required", "strike_off_required", "", "需要时填 Yes", "触发 M06 注销签署包；留空不触发。"),
+    ("业务停止日期", "Business cessation date", "strike_off_cessation_date", "", "可空", "DD/MM/YYYY；留空表示公司自注册后未开展业务。"),
+    ("注销声明签字董事", "Strike-off declaration signer", "strike_off_declaration_signer_name", "", "可空", "留空默认第一个董事签字人。"),
     ("是否做年审", "Annual review required", "annual_review_required", "", "默认 Auto", "留空/Auto 时，填写 FYE 或 AGM 日期即可生成年审包；填 No 则不生成。"),
     ("年审 FYE", "Annual review FYE", "fye_date", "", "年审时填", "DD/MM/YYYY。"),
     ("AGM 日期", "AGM date", "agm_date", "", "可空", "DD/MM/YYYY。"),
@@ -193,6 +196,7 @@ def sample_values() -> dict[str, Any]:
         "change_fye_required": "No",
         "change_company_name_required": "No",
         "transfer_in_required": "No",
+        "strike_off_required": "No",
         "annual_review_required": "No",
     }
 
@@ -399,6 +403,7 @@ def build_workbook(sample: bool) -> Workbook:
     add_kv_validation(ws, "change_fye_required", YES_NO)
     add_kv_validation(ws, "change_company_name_required", YES_NO)
     add_kv_validation(ws, "transfer_in_required", YES_NO)
+    add_kv_validation(ws, "strike_off_required", YES_NO)
     add_kv_validation(ws, "generate_resignation_letter", YES_NO)
     add_kv_validation(ws, "annual_review_required", YES_NO)
 

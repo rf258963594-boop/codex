@@ -40,6 +40,7 @@ from doc_generator import (
     generate_p2_m03_pdf_package,
     generate_p2_m04_pdf_package,
     generate_p2_m05_pdf_package,
+    generate_p2_m06_pdf_package,
     safe_filename,
 )
 from doc_render import convert_docx_to_pdf
@@ -70,6 +71,7 @@ TEMPLATE_DOWNLOADS = {
     "p2_m03_field_map": ("P2 M03 股份转让字段图谱", OUTPUTS_DIR / "P2_standard_templates_v1" / "M03_field_map.md"),
     "p2_m04_field_map": ("P2 M04 增资配股字段图谱", OUTPUTS_DIR / "P2_standard_templates_v1" / "M04_field_map.md"),
     "p2_m05_field_map": ("P2 M05 年审字段图谱", OUTPUTS_DIR / "P2_standard_templates_v1" / "M05_field_map.md"),
+    "p2_m06_field_map": ("P2 M06 注销字段图谱", DOC_TEMPLATE_DIR / "p2_standard_v1" / "M06_field_map.md"),
     "change_blank": ("现有公司变更 v2 空白模板", OUTPUTS_DIR / "AI适配_现有公司变更资料模板_v2_空白.xlsx"),
     "change_sample": ("现有公司变更 v2 示例模板", OUTPUTS_DIR / "AI适配_现有公司变更资料模板_v2_示例.xlsx"),
 }
@@ -127,6 +129,7 @@ TEMPLATE_NOTES = {
     "p2_m03_field_map": ("股份转让字段图谱", "开发和管理员排查 M03 字段用"),
     "p2_m04_field_map": ("增资配股字段图谱", "开发和管理员排查 M04 字段用"),
     "p2_m05_field_map": ("年审字段图谱", "开发和管理员排查 M05 字段用"),
+    "p2_m06_field_map": ("注销字段图谱", "开发和管理员排查 M06 字段用"),
     "change_blank": ("旧变更导入表", "保留参考，建议改用 v3"),
     "change_sample": ("旧变更示例", "保留参考，建议改用 v3"),
 }
@@ -385,6 +388,30 @@ DOCUMENT_TEMPLATES = {
         "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M05_annual_review_checklist_standard.docx",
         "note": "内部复核清单，内部编号 M05",
     },
+    "p2_m06_directors_resolution": {
+        "category": "注销 P2",
+        "name": "M06 注销董事决议",
+        "version": "v0.1",
+        "status": "启用",
+        "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M06_strike_off_directors_resolution_standard.docx",
+        "note": "批准 strike-off 申请并授权提交，内部编号 M06",
+    },
+    "p2_m06_shareholder_consent": {
+        "category": "注销 P2",
+        "name": "M06 股东注销同意书",
+        "version": "v0.1",
+        "status": "启用",
+        "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M06_strike_off_shareholder_consent_standard.docx",
+        "note": "每名股东/成员一份同意书，内部编号 M06",
+    },
+    "p2_m06_director_declaration": {
+        "category": "注销 P2",
+        "name": "M06 注销董事声明",
+        "version": "v0.1",
+        "status": "启用",
+        "path": DOC_TEMPLATE_DIR / "p2_standard_v1" / "M06_strike_off_director_declaration_standard.docx",
+        "note": "董事声明无资产、负债、税务、charge 和诉讼等，内部编号 M06",
+    },
 }
 
 TEMPLATE_REGISTRY_PATH = DATA_DIR / "template_registry.json"
@@ -547,6 +574,8 @@ class App(BaseHTTPRequestHandler):
             return self.handle_generate_p2_m04(user)
         if parsed.path == "/generate-p2-m05":
             return self.handle_generate_p2_m05(user)
+        if parsed.path == "/generate-p2-m06":
+            return self.handle_generate_p2_m06(user)
         if parsed.path == "/settings/common-people/save":
             return self.handle_save_common_person(user)
         if parsed.path == "/settings/users/save":
@@ -700,7 +729,7 @@ class App(BaseHTTPRequestHandler):
           </div>
           <div class="panel">
             <h3>当前可生成</h3>
-            <p>新公司注册、普通董事决议、转入、股份转让、增资配股和年审包都已接入 PDF 生成。注册、转股和配股会同步生成 Register of Members 相关文件。</p>
+            <p>新公司注册、普通董事决议、M02 转入/公司更名、股份转让、增资配股和年审包都已接入 PDF 生成。注册、转股和配股会同步生成 Register of Members 相关文件。</p>
           </div>
           <div class="panel">
             <h3>默认填写规则</h3>
@@ -766,7 +795,7 @@ class App(BaseHTTPRequestHandler):
           </section>
 
           <section class="panel">
-            <h3>M02 转入</h3>
+            <h3>M02 转入 / 公司更名</h3>
             <div class="form-grid">
               <label class="check wide"><input type="checkbox" name="transfer_in_required" value="1"> 生成转入 EGM / 交接文件包</label>
               <label>前秘书公司名称<input name="old_secretary_company" placeholder="不知道可留空"></label>
@@ -774,6 +803,9 @@ class App(BaseHTTPRequestHandler):
               <label>转入新挂名董事<input name="transfer_in_nominee_director_names" list="common-people" placeholder="例如 LE THI NGOC TRANG"></label>
               <label>转入新秘书<input name="transfer_in_secretary_names" list="common-people" placeholder="例如 FENDI CHANDRA TING S ING EE"></label>
               <label class="check wide"><input type="checkbox" name="transfer_in_resignation_letter" value="1"> 如有辞任人员，同包生成辞职信</label>
+              <label class="check wide"><input type="checkbox" name="change_company_name" value="1"> 生成公司更名 EGM / 特别决议包</label>
+              <label>新公司名称<input name="new_company_name" placeholder="NEW NAME PTE. LTD."></label>
+              <label>公司更名日期<input name="company_name_change_effective_date" type="date"></label>
             </div>
           </section>
 
@@ -806,6 +838,16 @@ class App(BaseHTTPRequestHandler):
               <label>新增实缴股本<input name="allotment_paid_up_share_capital"></label>
               <label>配股日期<input name="allotment_date" type="date"></label>
             </div>
+          </section>
+
+          <section class="panel">
+            <h3>M06 注销 / Strike-off</h3>
+            <div class="form-grid">
+              <label class="check wide"><input type="checkbox" name="strike_off_required" value="1"> 生成注销签署包</label>
+              <label>业务停止日期<input name="strike_off_cessation_date" type="date"></label>
+              <label>声明签字董事<input name="strike_off_declaration_signer_name" list="common-people" placeholder="留空默认第一个董事签字人"></label>
+            </div>
+            <p class="muted">业务停止日期留空时，文件按“自注册后未开展业务”表述。注销前仍需人工复核 IRAS、CPF、债务、银行、charge register、诉讼等事项。</p>
           </section>
 
           <section class="panel">
@@ -959,6 +1001,7 @@ class App(BaseHTTPRequestHandler):
         can_generate_m03 = row["task_type"] == "maintenance" and not blocking_errors and not is_generating and summary.get("m03_available") == "Yes"
         can_generate_m04 = row["task_type"] == "maintenance" and not blocking_errors and not is_generating and summary.get("m04_available") == "Yes"
         can_generate_m05 = row["task_type"] == "maintenance" and not blocking_errors and not is_generating and summary.get("m05_available") == "Yes"
+        can_generate_m06 = row["task_type"] == "maintenance" and not blocking_errors and not is_generating and summary.get("m06_available") == "Yes"
         is_admin = user.get("role") == "admin"
 
         generated_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P1_pdf_package.zip"
@@ -967,6 +1010,7 @@ class App(BaseHTTPRequestHandler):
         generated_m03_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P2_M03_pdf_package.zip"
         generated_m04_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P2_M04_pdf_package.zip"
         generated_m05_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P2_M05_pdf_package.zip"
+        generated_m06_zip = GENERATED_DIR / f"{safe_filename(row['job_code'])}_P2_M06_pdf_package.zip"
         generated_packages = [
             ("P1 注册文件包", generated_zip),
             ("M01 普通变更 DR 包", generated_m01_zip),
@@ -974,6 +1018,7 @@ class App(BaseHTTPRequestHandler):
             ("M03 股份转让包", generated_m03_zip),
             ("M04 增资配股包", generated_m04_zip),
             ("M05 年审文件包", generated_m05_zip),
+            ("M06 注销文件包", generated_m06_zip),
         ]
         has_download = any(path.exists() for _, path in generated_packages)
         generated_link = (
@@ -1006,7 +1051,12 @@ class App(BaseHTTPRequestHandler):
             if generated_m05_zip.exists()
             else ""
         )
-        download_links = f"<div class='button-row'>{generated_link}{generated_m01_link}{generated_m02_link}{generated_m03_link}{generated_m04_link}{generated_m05_link}</div>" if has_download else ""
+        generated_m06_link = (
+            f"<a class='button-link secondary' href='/generated/{h(generated_m06_zip.name)}'>{h(download_label('M06', user))}</a>"
+            if generated_m06_zip.exists()
+            else ""
+        )
+        download_links = f"<div class='button-row'>{generated_link}{generated_m01_link}{generated_m02_link}{generated_m03_link}{generated_m04_link}{generated_m05_link}{generated_m06_link}</div>" if has_download else ""
         generation_notice = (
             """
             <div class="info-box">
@@ -1035,7 +1085,7 @@ class App(BaseHTTPRequestHandler):
         if row["task_type"] in {"change", "maintenance"}:
             if is_generating:
                 generate_control = "<p class='muted'>PDF 正在后台生成，请稍等。</p>"
-            elif can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05:
+            elif can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05 or can_generate_m06:
                 maintenance_forms = []
                 if can_generate_m01:
                     maintenance_forms.append(
@@ -1087,18 +1137,28 @@ class App(BaseHTTPRequestHandler):
                         </form>
                         """
                     )
+                if can_generate_m06:
+                    maintenance_forms.append(
+                        f"""
+                        <form method="post" action="/generate-p2-m06">
+                          <input type="hidden" name="job_id" value="{h(row['id'])}">
+                          <button type="submit">{h(generate_button_label('M06', user))}</button>
+                          {dev_code('M06', user)}
+                        </form>
+                        """
+                    )
                 generate_control = f"""
                 <div class="stack">
                   {''.join(maintenance_forms)}
                 </div>
-                <p class="muted">已接入普通董事决议、M02 股东决议/转入文件、股份转让、增资配股和年审文件包。</p>
+                <p class="muted">已接入普通董事决议、M02 股东决议/转入文件、股份转让、增资配股、年审和注销文件包。</p>
                 """
             elif row["task_type"] == "maintenance":
                 generate_control = "<p class='muted'>这张表没有识别到已接入生成器的事项；文件包先保留为预览。</p>"
             else:
                 generate_control = "<p class='muted'>旧变更 v2 表当前只做判断预览；请使用公司维护/变更年审 v3 表生成正式文件。</p>"
 
-        can_generate_any = bool(can_generate or can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05)
+        can_generate_any = bool(can_generate or can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05 or can_generate_m06)
         generate_control = auto_generation_control(row, has_download, can_generate_any, bool(blocking_errors))
 
         admin_details = ""
@@ -1128,7 +1188,7 @@ class App(BaseHTTPRequestHandler):
           {generation_notice}
           {download_links}
           {generated_files_panel(generated_packages)}
-          {review_progress(row, summary, can_generate, can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05, bool(generated_link or generated_m01_link or generated_m02_link or generated_m03_link or generated_m04_link or generated_m05_link))}
+          {review_progress(row, summary, can_generate, can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05 or can_generate_m06, bool(generated_link or generated_m01_link or generated_m02_link or generated_m03_link or generated_m04_link or generated_m05_link or generated_m06_link))}
           {alert_block("严重错误", blocking_errors, "error-box")}
           {review_workflow(summary, warnings, blocking_errors, user)}
           {alert_block("系统说明", info, "info-box")}
@@ -1138,7 +1198,7 @@ class App(BaseHTTPRequestHandler):
         </section>
         <section class="panel">
           <h3>下一步操作</h3>
-          {generation_steps(row, summary, can_generate, can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05, user)}
+          {generation_steps(row, summary, can_generate, can_generate_m01 or can_generate_m02 or can_generate_m03 or can_generate_m04 or can_generate_m05 or can_generate_m06, user)}
         </section>
         <section class="panel">
           <h3>文件预览</h3>
@@ -1255,6 +1315,7 @@ class App(BaseHTTPRequestHandler):
                 <div><strong>股份转让包</strong><span>内部编号 M03，已生成转股决议、Instrument、股权证书、Register 更新和内部清单。</span></div>
                 <div><strong>增资配股包</strong><span>内部编号 M04，已生成授权、配股、申请书、证书、Form 24 和 Register 更新。</span></div>
                 <div><strong>年审文件包</strong><span>内部编号 M05，已生成合并签署包和独立内部复核清单。</span></div>
+                <div><strong>注销文件包</strong><span>内部编号 M06，已生成董事决议、股东同意书和董事声明。</span></div>
               </div>
             </div>
           </section>
@@ -1579,6 +1640,27 @@ class App(BaseHTTPRequestHandler):
         if is_generation_status(row["status"]):
             return self.redirect(f"/job?id={job_id}")
         self.queue_pdf_generation(user["id"], row, parsed, generate_p2_m05_pdf_package, "p2_m05_generating_pdf", "p2_m05_pdf_generated", "generate_p2_m05_pdf_package")
+        self.redirect(f"/job?id={job_id}")
+
+    def handle_generate_p2_m06(self, user):
+        fields = self.read_form_urlencoded()
+        job_id = fields.get("job_id", [""])[0]
+        with connect() as conn:
+            row = conn.execute("SELECT * FROM generation_jobs WHERE id = ?", (job_id,)).fetchone()
+        if not row:
+            return self.error_page(HTTPStatus.NOT_FOUND, "任务不存在。")
+        parsed = json.loads(row["parsed_json"])
+        suggestions = json.loads(row["suggestions_json"])
+        errors = suggestions.get("summary", {}).get("blocking_errors", [])
+        if row["task_type"] != "maintenance":
+            return self.error_page(HTTPStatus.BAD_REQUEST, "注销包生成只支持公司维护/变更/年审业务单。")
+        if errors:
+            return self.error_page(HTTPStatus.BAD_REQUEST, "存在严重错误，请先修改 Excel 后重新上传。")
+        if suggestions.get("summary", {}).get("m06_available") != "Yes":
+            return self.error_page(HTTPStatus.BAD_REQUEST, "没有识别到可生成注销文件包的事项。")
+        if is_generation_status(row["status"]):
+            return self.redirect(f"/job?id={job_id}")
+        self.queue_pdf_generation(user["id"], row, parsed, generate_p2_m06_pdf_package, "p2_m06_generating_pdf", "p2_m06_pdf_generated", "generate_p2_m06_pdf_package")
         self.redirect(f"/job?id={job_id}")
 
     def handle_save_common_person(self, user):
@@ -2181,6 +2263,7 @@ def build_p2_form_parsed(fields: dict[str, list[str]], common_people: dict[str, 
     document_date = form_value(fields, "default_document_date") or singapore_date_input()
     current_address = form_value(fields, "registered_office_address")
     new_address = form_value(fields, "new_registered_office_address")
+    new_company_name = form_value(fields, "new_company_name")
     company = {
         "task_type": "maintenance",
         "template_version": "p2_web_form_v1",
@@ -2198,6 +2281,8 @@ def build_p2_form_parsed(fields: dict[str, list[str]], common_people: dict[str, 
         "new_secretary_company": form_value(fields, "new_secretary_company") or "RSIN GROUP PTE. LTD.",
         "old_secretary_company": form_value(fields, "old_secretary_company"),
         "new_registered_office_address": new_address,
+        "new_company_name": new_company_name,
+        "company_name_change_effective_date": form_value(fields, "company_name_change_effective_date"),
         "egm_meeting_place": new_address,
     }
     lookup = common_name_lookup(common_people)
@@ -2308,6 +2393,20 @@ def build_p2_form_parsed(fields: dict[str, list[str]], common_people: dict[str, 
             new_value=company["new_secretary_company"],
             resignation_letter=resignation_letter,
         )
+    if new_company_name:
+        event(
+            "change_company_name",
+            effective_date=form_value(fields, "company_name_change_effective_date") or document_date,
+            approval_route="EGM",
+            document_group="M02-CN-001",
+            combine_in_dr="No",
+            old_value=company["company_name"],
+            new_value=new_company_name,
+            old_company_name=company["company_name"],
+            new_company_name=new_company_name,
+            meeting_place=new_address or current_address,
+            manual_review_required="Yes",
+        )
 
     particular_name = form_value(fields, "particular_person_name")
     particular_field = form_value(fields, "particular_field_label")
@@ -2359,6 +2458,17 @@ def build_p2_form_parsed(fields: dict[str, list[str]], common_people: dict[str, 
                 "form24_required": "Yes",
                 "generate_certificate": "Yes",
             }
+        )
+
+    if form_checked(fields, "strike_off_required"):
+        event(
+            "strike_off",
+            approval_route="DR+Shareholder Consent+Declaration",
+            document_group="M06-SO-001",
+            combine_in_dr="No",
+            strike_off_cessation_date=form_value(fields, "strike_off_cessation_date"),
+            strike_off_declaration_signer_name=form_value(fields, "strike_off_declaration_signer_name"),
+            manual_review_required="Yes",
         )
 
     annual_enabled = form_checked(fields, "annual_review_required") or bool(form_value(fields, "fye_date") or form_value(fields, "agm_date"))
@@ -2416,6 +2526,7 @@ P2_EVENT_CN = {
     "resign_secretary": "秘书辞任",
     "transfer_in": "秘书公司转入",
     "update_officer_particulars": "人员资料变更",
+    "strike_off": "注销/Strike off",
 }
 
 
@@ -2441,6 +2552,7 @@ def auto_generation_tasks(parsed: dict, suggestions: dict) -> list[tuple[str, ob
         ("M03", "m03_available", generate_p2_m03_pdf_package),
         ("M04", "m04_available", generate_p2_m04_pdf_package),
         ("M05", "m05_available", generate_p2_m05_pdf_package),
+        ("M06", "m06_available", generate_p2_m06_pdf_package),
     ]
     return [(code, generator) for code, key, generator in options if summary.get(key) == "Yes"]
 
@@ -3075,6 +3187,7 @@ def package_code(package_name: str, task_type: str = "") -> str:
         "股份转让包": "M03",
         "增资配股包": "M04",
         "年审包": "M05",
+        "注销包": "M06",
         "内部核对": "CHECK",
     }.get(package_name, "")
 
@@ -3088,6 +3201,7 @@ def generate_button_label(code: str, user: dict | None) -> str:
         "M03": "生成股份转让 PDF 包",
         "M04": "生成增资配股 PDF 包",
         "M05": "生成年审 PDF 包",
+        "M06": "生成注销 PDF 包",
     }
     if admin and code != "P1":
         return f"{labels.get(code, '生成 PDF 包')}（{code}）"
@@ -3103,6 +3217,7 @@ def download_label(code: str, user: dict | None) -> str:
         "M03": "下载股份转让 PDF 包",
         "M04": "下载增资配股 PDF 包",
         "M05": "下载年审 PDF 包",
+        "M06": "下载注销 PDF 包",
     }
     if admin and code != "P1":
         return f"{labels.get(code, '下载 PDF 包')}（{code}）"
@@ -3121,6 +3236,7 @@ def summary_cards(summary: dict[str, object]) -> str:
             ("转股", summary.get("share_transfers", "-")),
             ("增资", summary.get("share_allotments", "-")),
             ("年审", summary.get("annual_review", "-")),
+            ("注销", summary.get("strike_off", "-")),
             ("复核项", summary.get("manual_review_items", "-")),
         ]
     elif task_type == "incorporation":
@@ -3175,6 +3291,7 @@ def package_status_cards(files: list[dict[str, object]], summary: dict[str, obje
             or (package == "股份转让包" and summary.get("m03_available") == "Yes")
             or (package == "增资配股包" and summary.get("m04_available") == "Yes")
             or (package == "年审包" and summary.get("m05_available") == "Yes")
+            or (package == "注销包" and summary.get("m06_available") == "Yes")
         )
         status = "可生成" if available else "需复核" if manual else "预览"
         class_name = "available" if available else "review" if manual else "pending"
@@ -3360,7 +3477,7 @@ def generation_steps(row, summary: dict[str, object], can_generate: bool, can_ge
         ]
     elif task_type == "maintenance":
         action = "生成已接入的 PDF 文件包" if can_generate_p2 else "等待对应文件包接入"
-        detail = "当前已接入普通董事决议、转入、股份转让、增资配股和年审包；生成前请先核对复核提醒和签字人。" if can_generate_p2 else "当前事项还没有对应生成器，先按文件预览复核。"
+        detail = "当前已接入普通董事决议、转入、股份转让、增资配股、年审和注销包；生成前请先核对复核提醒和签字人。" if can_generate_p2 else "当前事项还没有对应生成器，先按文件预览复核。"
         steps = [
             ("1", "核对变更事项", "确认每个事项是否需要生成、是否同组 DR、签字人是否正确。"),
             ("2", "处理复核提醒", "高风险事项先人工确认，再进入生成。"),
@@ -3608,6 +3725,10 @@ def cleanup_job_files(row) -> None:
     safe_remove_dir(GENERATED_DIR / f"{code}_P2_M05_docs", GENERATED_DIR)
     safe_remove_file(GENERATED_DIR / f"{code}_P2_M05_pdf_package.zip", GENERATED_DIR)
     safe_remove_dir(GENERATED_DIR / f"{code}_P2_M05_pdf", GENERATED_DIR)
+    safe_remove_file(GENERATED_DIR / f"{code}_P2_M06_docx_package.zip", GENERATED_DIR)
+    safe_remove_dir(GENERATED_DIR / f"{code}_P2_M06_docs", GENERATED_DIR)
+    safe_remove_file(GENERATED_DIR / f"{code}_P2_M06_pdf_package.zip", GENERATED_DIR)
+    safe_remove_dir(GENERATED_DIR / f"{code}_P2_M06_pdf", GENERATED_DIR)
 
 
 def safe_remove_file(path: Path, root: Path) -> None:
@@ -3666,6 +3787,7 @@ def status_label(status: str) -> str:
         "p2_m03_generating_pdf": "正在生成股份转让 PDF",
         "p2_m04_generating_pdf": "正在生成增资配股 PDF",
         "p2_m05_generating_pdf": "正在生成年审 PDF",
+        "p2_m06_generating_pdf": "正在生成注销 PDF",
         "generation_failed": "生成失败，可重试",
         "pdf_generated": "已生成 PDF 包",
         "p2_m01_pdf_generated": "已生成普通董事决议 PDF",
@@ -3673,6 +3795,7 @@ def status_label(status: str) -> str:
         "p2_m03_pdf_generated": "已生成股份转让 PDF",
         "p2_m04_pdf_generated": "已生成增资配股 PDF",
         "p2_m05_pdf_generated": "已生成年审 PDF",
+        "p2_m06_pdf_generated": "已生成注销 PDF",
     }.get(status, status)
 
 

@@ -400,6 +400,7 @@ EVENT_NAME_CN = {
     "change_fye": "财政年结日变更",
     "change_company_name": "公司更名",
     "update_officer_particulars": "人员资料更新",
+    "strike_off": "注销/Strike off",
     "appoint_director": "委任董事",
     "resign_director": "董事辞任",
     "appoint_secretary": "委任秘书",
@@ -447,6 +448,7 @@ def parse_one_page_maintenance(wb, common_people: dict[str, dict[str, Any]]) -> 
     change_events.extend(quick_person_action_events(read_one_page_table(ws, "人员任免"), company))
     change_events.extend(quick_person_particular_events(read_one_page_table(ws, "个人资料变更"), company))
     change_events.extend(quick_transfer_in_events(company, fields, {}))
+    change_events.extend(quick_strike_off_events(company, fields, {}))
     share_transfers = normalize_quick_rows(read_one_page_table(ws, "股份转让"), company)
     share_allotments = normalize_quick_rows(read_one_page_table(ws, "增资配股"), company)
     annual_review = normalize_quick_annual_review(company, fields, annual_quick)
@@ -661,6 +663,7 @@ def parse_quick_maintenance(wb, common_people: dict[str, dict[str, Any]]) -> dic
     change_events.extend(quick_person_action_events(read_keyed_table(wb, "人员任免"), company))
     change_events.extend(quick_person_particular_events(read_keyed_table(wb, "个人资料变更"), company))
     change_events.extend(quick_transfer_in_events(company, transfer_in, task_flags))
+    change_events.extend(quick_strike_off_events(company, company_changes, task_flags))
 
     share_transfers = normalize_quick_rows(read_keyed_table(wb, "股份转让"), company)
     share_allotments = normalize_quick_rows(read_keyed_table(wb, "增资配股"), company)
@@ -784,7 +787,7 @@ def quick_company_change_events(company: dict[str, Any], fields: dict[str, Any],
                 new_value=fields.get("new_office_hours"),
             )
         )
-    if quick_detail_enabled(fields, "change_company_name_required", task_flags, "change_company_name", ["new_company_name"]):
+    if clean(fields.get("new_company_name")) and quick_detail_enabled(fields, "change_company_name_required", task_flags, "change_company_name", ["new_company_name"]):
         events.append(
             quick_event(
                 "change_company_name",
@@ -875,6 +878,24 @@ def quick_transfer_in_events(company: dict[str, Any], fields: dict[str, Any], ta
             resignation_letter=fields.get("generate_resignation_letter") or "No",
             manual_review_required="No",
             remarks=fields.get("remarks"),
+        )
+    ]
+
+
+def quick_strike_off_events(company: dict[str, Any], fields: dict[str, Any], task_flags: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    if not quick_detail_enabled(fields, "strike_off_required", task_flags, "strike_off", ["strike_off_cessation_date"]):
+        return []
+    return [
+        quick_event(
+            "strike_off",
+            fields.get("strike_off_document_date") or quick_task_date(task_flags, "strike_off", company),
+            approval_route="DR+Shareholder Consent+Declaration",
+            document_group="M06-SO-001",
+            combine_in_dr="No",
+            strike_off_cessation_date=fields.get("strike_off_cessation_date"),
+            strike_off_declaration_signer_name=fields.get("strike_off_declaration_signer_name"),
+            share_class=fields.get("strike_off_share_class") or company.get("share_class_default") or "Ordinary",
+            manual_review_required="Yes",
         )
     ]
 

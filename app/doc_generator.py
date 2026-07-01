@@ -30,6 +30,7 @@ M02_VERSION = "P2_M02_v0.3"
 M03_VERSION = "P2_M03_v0.1"
 M04_VERSION = "P2_M04_v0.1"
 M05_VERSION = "P2_M05_v0.3"
+M06_VERSION = "P2_M06_v0.1"
 M02_TEMPLATE_NAMES = {
     "resolution_package": "M02_resolution_package_transfer_in_standard.docx",
     "handover_resignation_package": "M02_handover_and_resignation_package_standard.docx",
@@ -55,6 +56,11 @@ M05_TEMPLATE_NAMES = {
     "agm_package": "M05_agm_documents_package_standard.docx",
     "annual_return_package": "M05_annual_return_authorisation_package_standard.docx",
     "checklist": "M05_annual_review_checklist_standard.docx",
+}
+M06_TEMPLATE_NAMES = {
+    "directors_resolution": "M06_strike_off_directors_resolution_standard.docx",
+    "shareholder_consent": "M06_strike_off_shareholder_consent_standard.docx",
+    "director_declaration": "M06_strike_off_director_declaration_standard.docx",
 }
 NO_VALUES = {"no", "n", "false", "0", "否", "不", "无需", "不用"}
 M02_TRANSFER_EVENT_TYPES = {"transfer_in", "transfer_in_cooperative", "transfer_in_non_cooperative"}
@@ -786,6 +792,92 @@ def generate_p2_m05_pdf_package(parsed: dict[str, Any], job_code: str) -> Path:
     )
 
 
+def generate_p2_m06_package(parsed: dict[str, Any], job_code: str) -> Path:
+    """Generate the P2 M06 strike-off DOCX package."""
+    if parsed.get("task_type") != "maintenance":
+        raise ValueError("M06 generation only supports maintenance / P2 Excel files.")
+    missing_templates = [
+        name for name in M06_TEMPLATE_NAMES.values()
+        if not (P2_TEMPLATE_DIR / name).exists()
+    ]
+    if missing_templates:
+        raise FileNotFoundError(f"M06 template(s) not found: {', '.join(missing_templates)}")
+
+    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    package_dir = GENERATED_DIR / f"{safe_filename(job_code)}_P2_M06_docs"
+    package_dir.mkdir(parents=True, exist_ok=True)
+    for old_path in package_dir.iterdir():
+        if old_path.is_file():
+            old_path.unlink()
+
+    context = build_m06_context(parsed)
+    if not m06_has_content(context["strike"]):
+        raise ValueError("This task has no M06 strike-off content.")
+
+    company_name = safe_filename(context["company"].get("company_name") or "company")
+    generated: list[str] = []
+
+    resolution_name = f"01_M06_strike_off_directors_resolution_{company_name}.docx"
+    render_m01_docx(P2_TEMPLATE_DIR / M06_TEMPLATE_NAMES["directors_resolution"], package_dir / resolution_name, context)
+    generated.append(resolution_name)
+
+    for idx, shareholder in enumerate(context["strike"].get("shareholder_signers", []), start=1):
+        holder_name = safe_filename(shareholder.get("full_name") or f"shareholder_{idx:02d}")
+        output_name = f"{idx + 1:02d}_M06_shareholder_consent_{idx:02d}_{holder_name}.docx"
+        child = context_with(context, strike_shareholder=strike_off_signer_context(shareholder, "Shareholder", context["strike"].get("document_date_raw")))
+        render_m01_docx(P2_TEMPLATE_DIR / M06_TEMPLATE_NAMES["shareholder_consent"], package_dir / output_name, child)
+        generated.append(output_name)
+
+    declaration_name = f"{len(generated) + 1:02d}_M06_director_declaration_{company_name}.docx"
+    render_m01_docx(P2_TEMPLATE_DIR / M06_TEMPLATE_NAMES["director_declaration"], package_dir / declaration_name, context)
+    generated.append(declaration_name)
+
+    summary_path = package_dir / "generation_summary.json"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "job_code": job_code,
+                "version": M06_VERSION,
+                "company": context["company"].get("company_name", ""),
+                "generated_files": generated,
+                "business_status": context["strike"].get("business_status_sentence", ""),
+                "director_signers": [row.get("full_name", "") for row in context["strike"].get("director_signers", [])],
+                "shareholder_signers": [row.get("full_name", "") for row in context["strike"].get("shareholder_signers", [])],
+                "declaration_signer": context["strike_declarant"].get("full_name", ""),
+                "manual_review_flags": context["strike"].get("manual_review_flags", []),
+                "notes": [
+                    "M06 is the P2 strike-off / company closure package.",
+                    "The package prepares signing documents only; ACRA, IRAS, CPF, creditor, charge register, bank and litigation checks remain manual review points.",
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    zip_path = GENERATED_DIR / f"{safe_filename(job_code)}_P2_M06_docx_package.zip"
+    if zip_path.exists():
+        zip_path.unlink()
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(package_dir.iterdir()):
+            if path.is_file():
+                zf.write(path, arcname=path.name)
+    return zip_path
+
+
+def generate_p2_m06_pdf_package(parsed: dict[str, Any], job_code: str) -> Path:
+    """Generate the P2 strike-off package and return a PDF-only zip."""
+    docx_zip = generate_p2_m06_package(parsed, job_code)
+    docx_zip.unlink(missing_ok=True)
+    code = safe_filename(job_code)
+    return build_m06_pdf_zip_from_docx_dir(
+        GENERATED_DIR / f"{code}_P2_M06_docs",
+        GENERATED_DIR / f"{code}_P2_M06_pdf",
+        GENERATED_DIR / f"{code}_P2_M06_pdf_package.zip",
+    )
+
+
 def build_pdf_zip_from_docx_dir(docx_dir: Path, pdf_dir: Path, zip_path: Path) -> Path:
     if not docx_dir.exists():
         raise FileNotFoundError(f"Generated DOCX folder not found: {docx_dir}")
@@ -944,6 +1036,33 @@ def build_m05_pdf_zip_from_docx_dir(docx_dir: Path, pdf_dir: Path, zip_path: Pat
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for pdf_path in sorted(final_paths):
             zf.write(pdf_path, arcname=pdf_path.name)
+    return zip_path
+
+
+def build_m06_pdf_zip_from_docx_dir(docx_dir: Path, pdf_dir: Path, zip_path: Path) -> Path:
+    if not docx_dir.exists():
+        raise FileNotFoundError(f"Generated DOCX folder not found: {docx_dir}")
+    pdf_dir.mkdir(parents=True, exist_ok=True)
+    final_dir = pdf_dir / "final"
+    final_dir.mkdir(parents=True, exist_ok=True)
+    for old_path in list(pdf_dir.glob("*.pdf")) + list(final_dir.glob("*.pdf")):
+        old_path.unlink()
+
+    converted: list[Path] = []
+    for docx_path in sorted(docx_dir.glob("*.docx")):
+        converted.append(convert_docx_to_pdf(docx_path, pdf_dir))
+    if not converted:
+        raise ValueError("No DOCX files were generated for PDF conversion.")
+
+    first_source = converted[0]
+    company_suffix = suffix_after_prefix(first_source, "01_M06_strike_off_directors_resolution_")
+    target = final_dir / f"01_M06_strike_off_signing_package_{company_suffix}.pdf"
+    merge_pdf_files(sorted(converted), target)
+
+    if zip_path.exists():
+        zip_path.unlink()
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(target, arcname=target.name)
     return zip_path
 
 
@@ -1292,12 +1411,199 @@ def build_m05_context(parsed: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_m06_context(parsed: dict[str, Any]) -> dict[str, Any]:
+    company = normalize_m01_company(parsed.get("company", {}))
+    people = [normalize_m01_person(row) for row in parsed.get("people", [])]
+    events = [row for row in parsed.get("change_events", []) if active_m06_event(row)]
+    event = events[0] if events else {}
+
+    document_date_raw = clean(event.get("effective_date") or company.get("strike_off_document_date") or company.get("default_document_date") or today_text())
+    cessation_date_raw = clean(event.get("strike_off_cessation_date") or event.get("cessation_date") or company.get("strike_off_cessation_date"))
+    share_class = clean(event.get("share_class") or company.get("share_class") or company.get("share_class_default") or "ORDINARY")
+
+    director_signers = director_signers_for_m01(people, company)
+    if not director_signers:
+        director_signers = [{"full_name": "", "capacity": "Director"}]
+    shareholder_signers = member_signers_for_m02(people, company)
+    if not shareholder_signers:
+        shareholder_signers = [{"full_name": "", "capacity": "Shareholder"}]
+    else:
+        shareholder_signers = force_signer_capacity(shareholder_signers, "Shareholder")
+    shareholder_signers = strike_off_shareholder_details(
+        shareholder_signers,
+        parsed.get("shareholdings") or parsed.get("shareholders") or [],
+        people,
+        share_class,
+    )
+
+    declarant_tokens = split_signer_tokens(
+        event.get("strike_off_declaration_signer_name")
+        or company.get("strike_off_declaration_signer_name")
+        or company.get("declaration_signer_name")
+    )
+    declarant_candidates = signers_from_tokens(declarant_tokens, people, "Director") if declarant_tokens else []
+    declarant = declarant_candidates[0] if declarant_candidates else director_signers[0]
+    declarant = strike_off_signer_context({**declarant, "capacity": "Director"}, "Director", document_date_raw)
+
+    manual_review_flags = []
+    if not clean(company.get("uen")):
+        manual_review_flags.append("UEN is blank.")
+    if not clean(declarant.get("id_number")):
+        manual_review_flags.append("Declaration signer ID number is blank.")
+    if not clean(declarant.get("address")):
+        manual_review_flags.append("Declaration signer address is blank.")
+    if not shareholder_signers or not clean(shareholder_signers[0].get("full_name")):
+        manual_review_flags.append("Shareholder consent signer is blank.")
+    if any(not clean(row.get("shares")) for row in shareholder_signers):
+        manual_review_flags.append("Shareholder shareholding quantity is blank for one or more consent letters.")
+
+    if cessation_date_raw:
+        business_status_clause = f"it has ceased to carry on business from {date_text(cessation_date_raw)}"
+        business_status_sentence = f"has ceased its business operations from {date_text(cessation_date_raw)}"
+    else:
+        business_status_clause = "it has not commenced business since the date of incorporation"
+        business_status_sentence = "has not commenced business since incorporation"
+
+    strike = {
+        "include_strike_off": bool(event),
+        "document_date_raw": document_date_raw,
+        "document_date": date_text(document_date_raw),
+        "cessation_date": date_text(cessation_date_raw),
+        "share_class": share_class.upper(),
+        "business_status_clause": business_status_clause,
+        "business_status_sentence": business_status_sentence,
+        "director_signers": director_signers,
+        "shareholder_signers": shareholder_signers,
+        "director_signature_blocks": signature_blocks(director_signers, "Director", document_date_raw),
+        "manual_review_flags": manual_review_flags,
+    }
+    return {
+        "company": company,
+        "people": people,
+        "provider": provider_context(),
+        "signature": signature_context(document_date_raw),
+        "strike": strike,
+        "strike_declarant": declarant,
+        "strike_shareholder": strike_off_signer_context(shareholder_signers[0], "Shareholder", document_date_raw),
+    }
+
+
 def m04_has_content(m04: dict[str, Any]) -> bool:
     return bool(m04.get("allotments"))
 
 
 def m05_has_content(m05: dict[str, Any]) -> bool:
     return bool(m05.get("include_annual_review"))
+
+
+def m06_has_content(strike: dict[str, Any]) -> bool:
+    return bool(strike.get("include_strike_off"))
+
+
+def active_m06_event(row: dict[str, Any]) -> bool:
+    if clean(row.get("event_type")) != "strike_off":
+        return False
+    return active_m01_row(row, "generate", ["effective_date", "strike_off_cessation_date", "cessation_date", "new_value"])
+
+
+def strike_off_signer_context(signer: dict[str, Any], default_capacity: str, signature_date: Any = "") -> dict[str, Any]:
+    item = {**signer}
+    item["capacity"] = clean(item.get("capacity")) or default_capacity
+    item["id_type"] = clean(item.get("id_type")) or "ID"
+    item["id_number"] = clean(item.get("id_number"))
+    item["address"] = clean(item.get("address") or item.get("residential_address"))
+    item["share_class"] = clean(item.get("share_class")) or "ORDINARY"
+    shares = clean(item.get("shares") or item.get("shares_text"))
+    item["shares_text"] = bold_field(format_number(shares)) if shares else "______________________________"
+    item["id_label"] = f"{item['id_type']} No.: {item['id_number']}" if item["id_number"] else "ID No.: ______________________________"
+    item["signature_block"] = "\n".join(
+        [
+            "Signature: ______________________________",
+            f"Name: {bold_field(item.get('full_name'))}",
+            f"Capacity: {bold_field(item.get('capacity'))}",
+            f"No.: {bold_field(item.get('id_number')) if item.get('id_number') else '______________________________'}",
+            f"Date: {bold_field(date_text(signature_date)) if clean(signature_date) else '______________________________'}",
+        ]
+    )
+    return item
+
+
+def strike_off_shareholder_details(
+    signers: list[dict[str, Any]],
+    shareholdings: list[dict[str, Any]],
+    people: list[dict[str, Any]],
+    default_share_class: str,
+) -> list[dict[str, Any]]:
+    rows = [row for row in shareholdings if isinstance(row, dict)]
+    enriched: list[dict[str, Any]] = []
+    for signer in signers:
+        matched = match_strike_off_shareholding(signer, rows, people)
+        item = dict(signer)
+        if matched:
+            item["shares"] = clean(
+                matched.get("shares")
+                or matched.get("number_of_shares")
+                or matched.get("share_count")
+                or matched.get("issued_shares")
+            )
+            item["share_class"] = clean(matched.get("share_class") or matched.get("class_of_shares")) or default_share_class
+            if not clean(item.get("residential_address")):
+                item["residential_address"] = clean(matched.get("shareholder_address") or matched.get("address"))
+            if not clean(item.get("id_number")):
+                item["id_number"] = clean(matched.get("id_number") or matched.get("person_id_number"))
+            if not clean(item.get("id_type")):
+                item["id_type"] = clean(matched.get("id_type") or matched.get("person_id_type"))
+        else:
+            item["shares"] = clean(item.get("shares"))
+            item["share_class"] = clean(item.get("share_class")) or default_share_class
+        enriched.append(item)
+    return enriched
+
+
+def match_strike_off_shareholding(
+    signer: dict[str, Any],
+    shareholdings: list[dict[str, Any]],
+    people: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    signer_names = {
+        normalize_match_text(signer.get("full_name")),
+        normalize_match_text(signer.get("common_person_name")),
+        normalize_match_text(signer.get("_input_name")),
+    }
+    signer_names.discard("")
+    signer_ids = {
+        normalize_match_text(signer.get("person_id")),
+        normalize_match_text(signer.get("id_number")),
+    }
+    signer_ids.discard("")
+    for row in shareholdings:
+        row_names = {
+            normalize_match_text(row.get("shareholder_name")),
+            normalize_match_text(row.get("person_full_name")),
+            normalize_match_text(row.get("full_name")),
+            normalize_match_text(row.get("name")),
+        }
+        row_ids = {
+            normalize_match_text(row.get("person_id")),
+            normalize_match_text(row.get("id_number")),
+            normalize_match_text(row.get("person_id_number")),
+        }
+        if signer_names.intersection(row_names) or signer_ids.intersection(row_ids):
+            return row
+    for person in people:
+        if normalize_match_text(person.get("full_name")) not in signer_names:
+            continue
+        person_id = normalize_match_text(person.get("person_id"))
+        if not person_id:
+            continue
+        for row in shareholdings:
+            if normalize_match_text(row.get("person_id")) == person_id:
+                return row
+    return None
+
+
+def normalize_match_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", clean(value)).strip().lower()
 
 
 def active_m02_event(row: dict[str, Any]) -> bool:
